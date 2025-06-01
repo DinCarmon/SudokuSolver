@@ -3,7 +3,9 @@ import random
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-
+from PIL import Image
+import os
+from digit_recognition.digit_classification_model_training_and_using import predict_digits
 
 def preprocess_picture(image):
     """function to greyscale, blur and change the receptive threshold of image"""
@@ -24,7 +26,7 @@ def preprocess_picture(image):
     # plt.show()
     return threshold_img
 
-def find_soduko_outline(image, threshold_image):
+def find_contours(image, threshold_image):
     """Finding the outline of the sudoku puzzle in the image"""
     image_with_contours = image.copy()
 
@@ -37,10 +39,11 @@ def find_soduko_outline(image, threshold_image):
     plt.figure()
     plt.imshow(image_with_contours)
     #plt.show()
-    return contours, image_with_contours
 
-def main_outline(image, contours):
-    biggest = np.array([])
+    return contours
+
+def find_soduko_outline(image, contours):
+    biggest_contour = np.array([])
     max_area = 0
     for contour in contours:
         # Find the size of the contour.
@@ -53,24 +56,54 @@ def main_outline(image, contours):
             approx = cv2.approxPolyDP(contour , 0.02* peri, True)
             # If it is a shape of a "rectangle" and its size is the biggest
             if area > max_area and len(approx) == 4:
-                biggest = approx
+                biggest_contour = approx
                 max_area = area
 
     if max_area == 0:
+        plt.figure()
+        plt.imshow(image)
+        plt.show()
         raise Exception("No 4 point shape of reasonable size found in image.")
 
-    return biggest ,max_area
+    image_with_biggest_simplified_contour = image.copy()
+    cv2.drawContours(image_with_biggest_simplified_contour, [biggest_contour], -1, (0, 255, 0), 3)
 
-def reframe(points):
-    points = points.reshape((4, 2))
-    points_new = np.zeros((4,1,2),dtype = np.int32)
-    add = points.sum(1)
-    points_new[0] = points[np.argmin(add)]
-    points_new[3] = points[np.argmax(add)]
-    diff = np.diff(points, axis =1)
-    points_new[1] = points[np.argmin(diff)]
-    points_new[2] = points[np.argmax(diff)]
-    return points_new
+    plt.figure()
+    plt.imshow(image_with_biggest_simplified_contour)
+    # plt.show()
+
+    return biggest_contour
+
+def get_edges_coords_from_soduko_contour(image, soduko_outline_contour):
+    soduko_outline_contour = soduko_outline_contour.reshape((4, 2))
+    soduko_rectangle_edges_coords = np.zeros((4,1,2),dtype = np.int32)
+    add = soduko_outline_contour.sum(1)
+    soduko_rectangle_edges_coords[0] = soduko_outline_contour[np.argmin(add)]
+    soduko_rectangle_edges_coords[3] = soduko_outline_contour[np.argmax(add)]
+    diff = np.diff(soduko_outline_contour, axis =1)
+    soduko_rectangle_edges_coords[1] = soduko_outline_contour[np.argmin(diff)]
+    soduko_rectangle_edges_coords[2] = soduko_outline_contour[np.argmax(diff)]
+
+    image_with_soduko_edges = image.copy()
+    cv2.drawContours(image_with_soduko_edges, soduko_rectangle_edges_coords, -1, (0, 255, 0), 10)
+    plt.figure()
+    plt.imshow(image_with_soduko_edges)
+    # plt.show()
+
+    return soduko_rectangle_edges_coords
+
+def get_extracted_soduko_image(image, soduko_contour):
+    pts1 = np.float32(soduko_contour)
+    pts2 = np.float32([[0, 0], [450, 0], [0, 450], [450, 450]])
+    matrix = cv2.getPerspectiveTransform(pts1, pts2)
+    imagewrap = cv2.warpPerspective(image, matrix, (450, 450))
+    imagewrap = cv2.cvtColor(imagewrap, cv2.COLOR_BGR2GRAY)
+
+    plt.figure()
+    plt.imshow(imagewrap)
+    # plt.show()
+
+    return imagewrap
 
 def splitcells(img):
     rows = np.vsplit(img,9)
@@ -79,15 +112,40 @@ def splitcells(img):
         cols = np.hsplit(r,9)
         for box in cols:
             boxes.append(box)
+
+    # plt.figure()
+    # plt.imshow(boxes[58])
+    # plt.show()
+
     return boxes
 
+def crop_cell(cells):
+    """The sudoku_cell's output includes the boundaries this could lead to misclassifications by the model"""
+    cells_cropped = []
+    for image in cells:
+        img = np.array(image)
+        img = img[4:46, 6:46]
+        img = Image.fromarray(img)
+        cells_cropped.append(img)
+
+    #plt.figure()
+    #plt.imshow(cells_cropped[58])
+    #plt.show()
+
+    return cells_cropped
+
 if __name__ == '__main__':
-    folder = r"../Datasets/Dataset1-SudokuImageDataset-Kaggle/v2_train/v2_train"
+    base_dir = os.path.dirname(__file__)
+    file_path = os.path.join(base_dir, "digit_recognition_model/model.h5")
 
     # Choose only a jpg file
-    image_name = random.choice(os.listdir(folder))
-    while not image_name.endswith(".jpg"):
-        image_name = random.choice(os.listdir(folder))
+    base_dir = os.path.dirname(__file__)
+    folder = os.path.join(base_dir, "../Datasets/Dataset1-SudokuImageDataset-Kaggle/v2_train/v2_train")
+
+    #image_name = random.choice(os.listdir(folder))
+    #while not image_name.endswith(".jpg"):
+    #    image_name = random.choice(os.listdir(folder))
+    image_name = "image1055.jpg"
 
     print("Chosen image file: ", folder + '/' + image_name)
 
@@ -100,20 +158,21 @@ if __name__ == '__main__':
 
     preprocessed_image = preprocess_picture(image)
 
-    contours, contour_1 = find_soduko_outline(image, preprocessed_image)
+    contours = find_contours(image, preprocessed_image)
 
-    black_img = np.zeros((450, 450, 3), np.uint8)
-    biggest, maxArea = main_outline(image, contours)
-    if biggest.size != 0:
-        biggest = reframe(biggest)
-        contour_2 = image.copy()
-        cv2.drawContours(contour_2, biggest, -1, (0, 255, 0), 10)
-        pts1 = np.float32(biggest)
-        pts2 = np.float32([[0, 0], [450, 0], [0, 450], [450, 450]])
-        matrix = cv2.getPerspectiveTransform(pts1, pts2)
-        imagewrap = cv2.warpPerspective(image, matrix, (450, 450))
-        imagewrap = cv2.cvtColor(imagewrap, cv2.COLOR_BGR2GRAY)
+    soduko_outline = find_soduko_outline(image, contours)
 
-    plt.figure()
-    plt.imshow(imagewrap)
-    #plt.show()
+    soduko_rectangle_edges_coords = get_edges_coords_from_soduko_contour(image, soduko_outline)
+
+    imagewrap = get_extracted_soduko_image(image, soduko_rectangle_edges_coords)
+
+    sudoku_cells = splitcells(imagewrap)
+
+    sudoku_cell_cropped = crop_cell(sudoku_cells)
+
+    soduku_prediction = predict_digits(sudoku_cell_cropped)
+
+
+
+
+
