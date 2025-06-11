@@ -34,6 +34,7 @@ function UploadForm() {
           state: {
             board: data.board,
             original_image: data.original_image,
+            wrapped_image: data.wrapped_image,
           },
         });
       } else {

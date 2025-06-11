@@ -1,5 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi import Body
+import numpy as np
 import base64
 import sys
 import os
@@ -13,6 +15,9 @@ import cv2
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from Loader.SudokuImageExtractor.sudoku_extractor import extract_soduko_from_image
+from Loader.SudokuImageExtractor.sudoku_extractor import get_image_wrap
+
+from Solver.solver import solve_sudoku
 
 app = FastAPI()
 
@@ -49,11 +54,18 @@ async def upload_image(image: UploadFile = File(...)):
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Corrupted image")
 
     img = cv2.imread(file_location)
+
+    img_wrap = get_image_wrap(img)
+    wrapped_filename = os.path.splitext(file_location)[0] + '_wrapped' + os.path.splitext(file_location)[1]
+    cv2.imwrite(wrapped_filename, img_wrap)
+
     board = extract_soduko_from_image(img)
 
     # Read and encode the original image to base64
     with open(file_location, "rb") as img_file:
         encoded_image = base64.b64encode(img_file.read()).decode("utf-8")
+    with open(wrapped_filename, "rb") as img_file:
+        encoded_wrapped_image = base64.b64encode(img_file.read()).decode("utf-8")
 
     # Determine the correct MIME type
     ext = image.filename.lower().split('.')[-1]
@@ -63,11 +75,47 @@ async def upload_image(image: UploadFile = File(...)):
         mime_type = "image/jpeg"
     else:
         mime_type = "application/octet-stream"  # fallback
-    data_uri = f"data:{mime_type};base64,{encoded_image}"
+    data_uri_original_image = f"data:{mime_type};base64,{encoded_image}"
+    data_uri_wrapped_image = f"data:{mime_type};base64,{encoded_wrapped_image}"
+
 
     return JSONResponse(content={
         "message": "Image uploaded successfully",
         "filename": image.filename,
         "board": board.tolist(),
-        "original_image": data_uri
+        "original_image": data_uri_original_image,
+        "wrapped_image": data_uri_wrapped_image
     })
+
+@app.post("/solve-sudoku")
+async def solve_sudoku_route(
+    payload: dict = Body(...)
+):
+    board = payload.get("board")
+    image = payload.get("image")
+    image_wrap = payload.get("image_wrap")
+
+    if board is None or image is None or image_wrap is None:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Missing data")
+
+    original_board = np.array(board)
+    solved_board = original_board.copy()
+    success = solve_sudoku(solved_board)
+
+    if success:
+        original_board = solved_board
+        print(solved_board)
+        print("success")
+    else:
+        print("Unsolvable")
+
+    if not success:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Board is unsolvable")
+
+    return {
+        "solvable": success,
+        "board": original_board.tolist(),
+        "solved_board": solved_board.tolist(),
+        "original_image": image,
+        "wrapped_image": image_wrap,
+    }

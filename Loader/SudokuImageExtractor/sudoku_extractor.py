@@ -136,10 +136,7 @@ def crop_cell(cells):
 
     return cells_cropped
 
-def extract_soduko_from_image(image):
-    #base_dir = os.path.dirname(__file__)
-    #file_path = os.path.join(base_dir, "digit_recognition_model/model.h5")
-
+def get_image_wrap(image):
     image = cv2.resize(image, (450, 450))
 
     preprocessed_image = preprocess_picture(image)
@@ -151,6 +148,15 @@ def extract_soduko_from_image(image):
     soduko_rectangle_edges_coords = get_edges_coords_from_soduko_contour(image, soduko_outline)
 
     imagewrap = get_extracted_soduko_image(image, soduko_rectangle_edges_coords)
+
+    return imagewrap
+
+def extract_soduko_from_image(image):
+    imagewrap = get_image_wrap(image)
+
+    plt.figure()
+    plt.imshow(imagewrap)
+    #plt.show()
 
     sudoku_cells = splitcells(imagewrap)
 
