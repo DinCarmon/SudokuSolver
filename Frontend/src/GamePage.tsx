@@ -10,6 +10,7 @@ function GamePage() {
   const [currentBoard, setCurrentBoard] = useState(board);
   // Store the history of boards
   const boardHistoryRef = useRef([board]);
+  const [cellStatus, setCellStatus] = useState<Record<string, "ok" | "error">>({});
 
   const boardString = currentBoard ? currentBoard.map(row => row.join(' ')).join('\n') : 'No board data';
 
@@ -59,7 +60,7 @@ function GamePage() {
                       type="text"
                       maxLength={1}
                       value={value !== 0 ? value : ''}
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const val = e.target.value;
                         if (!/^[1-9]?$/.test(val)) return;
 
@@ -68,8 +69,44 @@ function GamePage() {
                             rIdx === rowIndex && cIdx === colIndex ? (val === '' ? 0 : parseInt(val)) : cell
                           )
                         );
+
                         setCurrentBoard(newBoard);
                         boardHistoryRef.current.push(currentBoard.map(row => [...row]));
+
+                        if (val === '') {
+                          setCellStatus((prev) => ({
+                            ...prev,
+                            [`${rowIndex}-${colIndex}`]: "ok",
+                          }));
+                        }
+
+                        try {
+                          const response = await fetch('http://localhost:8000/solve-sudoku', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              board: newBoard,
+                              image: originalImage,
+                              image_wrap: wrappedImage,
+                            }),
+                          });
+
+                          if (response.status === 400) {
+                            setCellStatus((prev) => ({
+                              ...prev,
+                              [`${rowIndex}-${colIndex}`]: "error",
+                            }));
+                          } else {
+                            setCellStatus((prev) => ({
+                              ...prev,
+                              [`${rowIndex}-${colIndex}`]: "ok",
+                            }));
+                          }
+                        } catch (err) {
+                          console.error("Validation error:", err);
+                        }
                       }}
                       style={{
                         width: '100%',
@@ -79,7 +116,12 @@ function GamePage() {
                         textAlign: 'center',
                         fontSize: '18px',
                         fontWeight: 'bold',
-                        backgroundColor: value !== 0 ? 'green' : '#f0f0f0',
+                        backgroundColor:
+                          cellStatus[`${rowIndex}-${colIndex}`] === "error" && value !== 0
+                            ? 'red'
+                            : value !== 0
+                            ? 'green'
+                            : '#f0f0f0',
                         color: 'white',
                       }}
                     />
@@ -150,7 +192,25 @@ function GamePage() {
                   const data = await response.json();
 
                   if (response.status === 400) {
-                    alert(data.detail || "Invalid Sudoku board or unsolvable puzzle.");
+                    alert((data.detail || "Invalid board.") + "\nReverting if possible.");
+                    if (boardHistoryRef.current.length > 1) {
+                      const prevBoard = boardHistoryRef.current.pop();
+                      setCurrentBoard(prevBoard);
+                      // Find changed cells between currentBoard and prevBoard
+                      const newCellStatus = { ...cellStatus };
+                      currentBoard.forEach((row, rIdx) => {
+                        row.forEach((cell, cIdx) => {
+                          if (prevBoard[rIdx][cIdx] !== cell) {
+                            // Remove error status for changed cells
+                            const key = `${rIdx}-${cIdx}`;
+                            if (newCellStatus[key]) {
+                              delete newCellStatus[key];
+                            }
+                          }
+                        });
+                      });
+                      setCellStatus(newCellStatus);
+                    }
                     return;
                   }
 
@@ -176,6 +236,21 @@ function GamePage() {
                 if (boardHistoryRef.current.length > 1) {
                   const prevBoard = boardHistoryRef.current.pop();
                   setCurrentBoard(prevBoard);
+
+                  // Find changed cells between currentBoard and prevBoard
+                  const newCellStatus = { ...cellStatus };
+                  currentBoard.forEach((row, rIdx) => {
+                    row.forEach((cell, cIdx) => {
+                      if (prevBoard[rIdx][cIdx] !== cell) {
+                        // Remove error status for changed cells
+                        const key = `${rIdx}-${cIdx}`;
+                        if (newCellStatus[key]) {
+                          delete newCellStatus[key];
+                        }
+                      }
+                    });
+                  setCellStatus(newCellStatus);
+                  });
                 }
               }}
             >
