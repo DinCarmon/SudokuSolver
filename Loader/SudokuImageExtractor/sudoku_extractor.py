@@ -4,8 +4,10 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
-import os
-from digit_recognition.digit_classification_model_training_and_using import predict_digits
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from SudokuImageExtractor.digit_recognition.digit_classification_model_training_and_using import predict_digits
 
 def preprocess_picture(image):
     """function to greyscale, blur and change the receptive threshold of image"""
@@ -134,27 +136,11 @@ def crop_cell(cells):
 
     return cells_cropped
 
-if __name__ == '__main__':
-    base_dir = os.path.dirname(__file__)
-    file_path = os.path.join(base_dir, "digit_recognition_model/model.h5")
+def extract_soduko_from_image(image):
+    #base_dir = os.path.dirname(__file__)
+    #file_path = os.path.join(base_dir, "digit_recognition_model/model.h5")
 
-    # Choose only a jpg file
-    base_dir = os.path.dirname(__file__)
-    folder = os.path.join(base_dir, "../Datasets/Dataset1-SudokuImageDataset-Kaggle/v2_train/v2_train")
-
-    #image_name = random.choice(os.listdir(folder))
-    #while not image_name.endswith(".jpg"):
-    #    image_name = random.choice(os.listdir(folder))
-    image_name = "image1055.jpg"
-
-    print("Chosen image file: ", folder + '/' + image_name)
-
-    image = cv2.imread(folder + '/' + image_name)
     image = cv2.resize(image, (450, 450))
-
-    plt.figure()
-    plt.imshow(image)
-    plt.show()
 
     preprocessed_image = preprocess_picture(image)
 
@@ -172,7 +158,33 @@ if __name__ == '__main__':
 
     soduku_prediction = predict_digits(sudoku_cell_cropped)
 
-    print(soduku_prediction)
+    # print(soduku_prediction)
+
+    return soduku_prediction
+
+
+if __name__ == '__main__':
+    base_dir = os.path.dirname(__file__)
+    folder = os.path.join(base_dir, "../Datasets/Dataset1-SudokuImageDataset-Kaggle/v2_train/v2_train")
+
+    # Choose only a jpg file
+    #image_name = random.choice(os.listdir(folder))
+    #while not image_name.endswith(".jpg"):
+    #    image_name = random.choice(os.listdir(folder))
+    image_name = "image1055.jpg"
+
+    print("Chosen image file: ", folder + '/' + image_name)
+
+    image = cv2.imread(folder + '/' + image_name)
+
+    plt.figure()
+    plt.imshow(image)
+    plt.show()
+
+    board = extract_soduko_from_image(image)
+
+    print(board)
+
 
 
 

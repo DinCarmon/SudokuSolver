@@ -1,10 +1,18 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
+import base64
+import sys
 import os
 from PIL import Image
 import shutil
 from starlette.status import HTTP_400_BAD_REQUEST
 from fastapi.middleware.cors import CORSMiddleware
+import cv2
+
+# Add the parent directory to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from Loader.SudokuImageExtractor.sudoku_extractor import extract_soduko_from_image
 
 app = FastAPI()
 
@@ -40,4 +48,26 @@ async def upload_image(image: UploadFile = File(...)):
     except Exception:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Corrupted image")
 
-    return JSONResponse(content={"message": "Image uploaded successfully", "filename": image.filename})
+    img = cv2.imread(file_location)
+    board = extract_soduko_from_image(img)
+
+    # Read and encode the original image to base64
+    with open(file_location, "rb") as img_file:
+        encoded_image = base64.b64encode(img_file.read()).decode("utf-8")
+
+    # Determine the correct MIME type
+    ext = image.filename.lower().split('.')[-1]
+    if ext == "png":
+        mime_type = "image/png"
+    elif ext in ("jpg", "jpeg"):
+        mime_type = "image/jpeg"
+    else:
+        mime_type = "application/octet-stream"  # fallback
+    data_uri = f"data:{mime_type};base64,{encoded_image}"
+
+    return JSONResponse(content={
+        "message": "Image uploaded successfully",
+        "filename": image.filename,
+        "board": board.tolist(),
+        "original_image": data_uri
+    })

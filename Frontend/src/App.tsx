@@ -1,4 +1,6 @@
+import { Routes, Route } from 'react-router-dom';
 import UploadForm from './UploadForm';
+import GamePage from './GamePage';
 import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
@@ -38,10 +40,12 @@ function App() {
 
      */
     return (
-        <div>
-                    <UploadForm/>
-        </div>
-            )
+        <Routes>
+          <Route path="/uploadform" element={<UploadForm/>}/>
+          <Route path="/gamepage" element={<GamePage/>} />
+          <Route path="*" element={<UploadForm/>} /> {/* default */}
+        </Routes>
+      );
 }
 
 export default App

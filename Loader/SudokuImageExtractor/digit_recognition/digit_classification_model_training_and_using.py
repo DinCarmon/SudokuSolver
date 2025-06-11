@@ -147,6 +147,9 @@ def predict_digit_from_image(image):
     prediction = model.predict(img_input)
     digit = np.argmax(prediction)
 
+    if digit == 10:
+        digit = 0
+
     # === 7. Display result ===
     #print(f"Predicted digit: {digit}")
     #plt.imshow(img_resized, cmap='gray')
@@ -168,9 +171,14 @@ def predict_digits(digit_images):
 
     for idx, image in enumerate(digit_images):
         digit, _ = predict_digit_from_image(image)
-        arr[int(idx / 9), int(idx % 9)] = int(digit)
+        if digit <= 9:
+            arr[int(idx / 9), int(idx % 9)] = int(digit)
+        else:
+            arr[int(idx / 9), int(idx % 9)] = 0
 
-    print("Predicted soduko: \n", arr)
+    #print("Predicted soduko: \n", arr)
+
+    return arr
 
 
 if __name__ == "__main__":

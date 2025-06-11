@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 function UploadForm() {
   const [image, setImage] = useState<File | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -27,7 +29,16 @@ function UploadForm() {
 
       if (!response.ok) throw new Error(data.detail || 'Upload failed');
 
-      setMessage(`✅ ${data.message}`);
+      if (data.board && data.original_image) {
+        navigate('/gamepage', {
+          state: {
+            board: data.board,
+            original_image: data.original_image,
+          },
+        });
+      } else {
+        setMessage(`✅ ${data.message}`);
+      }
     } catch (error: any) {
       setMessage(`❌ ${error.message}`);
     }
