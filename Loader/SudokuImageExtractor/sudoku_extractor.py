@@ -154,7 +154,7 @@ if __name__ == '__main__':
 
     plt.figure()
     plt.imshow(image)
-    #plt.show()
+    plt.show()
 
     preprocessed_image = preprocess_picture(image)
 
@@ -171,6 +171,8 @@ if __name__ == '__main__':
     sudoku_cell_cropped = crop_cell(sudoku_cells)
 
     soduku_prediction = predict_digits(sudoku_cell_cropped)
+
+    print(soduku_prediction)
 
 
 
