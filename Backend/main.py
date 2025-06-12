@@ -17,7 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Loader.SudokuImageExtractor.sudoku_extractor import extract_soduko_from_image
 from Loader.SudokuImageExtractor.sudoku_extractor import get_image_wrap
 
-from Solver.solver import solve_sudoku
+from Solver.solver import solve_sudoku_automatic
 
 app = FastAPI()
 
@@ -100,7 +100,7 @@ async def solve_sudoku_route(
 
     original_board = np.array(board)
     solved_board = original_board.copy()
-    success = solve_sudoku(solved_board)
+    success = solve_sudoku_automatic(solved_board)
 
     if success:
         original_board = solved_board
