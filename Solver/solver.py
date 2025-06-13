@@ -18,7 +18,7 @@ This process continues until the entire board is filled with valid numbers, or i
 """
 from datetime import datetime
 from enum import Enum
-
+from itertools import combinations
 import numpy as np
 
 class SudokuTechnique(Enum):
@@ -26,7 +26,36 @@ class SudokuTechnique(Enum):
     NAKED_SINGLE_BLOCK = 2,
     BOX_LINE_INTERACTION = 3,
     METADATA_BOX_LINE_INTERACTION = 4,
-    COLUMN_LINE_INTERACTION = 5
+    COLUMN_LINE_INTERACTION = 5,
+    NAKED_SINGLE = 6,
+    NAKED_TRIPLE = 7
+
+def update_cell_notation(cell_notation, row, col, digit):
+    """
+    Update the cells notation as if someone added a digit in (row, col)
+    :param cell_notation:
+    :param row:
+    :param col:
+    :param digit:
+    :return:
+    """
+    for r in range(9):
+        if digit in cell_notation[r][col]:
+            cell_notation[r][col].remove(digit)
+
+    for c in range(9):
+        if digit in cell_notation[row][c]:
+            cell_notation[row][c].remove(digit)
+
+    block_row = row // 3
+    block_col = col // 3
+
+    for relative_row in range(3):
+        for relative_col in range(3):
+            if digit in cell_notation[3 * block_row + relative_row][3 * block_col + relative_col]:
+                cell_notation[3 * block_row + relative_row][3 * block_col + relative_col].remove(digit)
+
+    cell_notation[row][col] = []
 
 class Board:
     def __init__(self, board):
@@ -35,6 +64,18 @@ class Board:
         self.metadata_on_board = []
         self.last_used_technique = None
         self.last_step_description_str = ""
+
+        self.cell_notation = [[0 for _ in range(9)] for _ in range(9)] # a 9 x 9 grid
+        for row in range(9):
+            for col in range(9):
+                if board[row][col] != 0:
+                    self.cell_notation[row][col] = []
+                else:
+                    self.cell_notation[row][col] = list(range(1, 10))
+        for row in range(9):
+            for col in range(9):
+                if board[row][col] != 0:
+                    update_cell_notation(self.cell_notation, row, col, board[row][col])
 
 def is_valid(board, row, column, digit):
     """
@@ -147,10 +188,11 @@ def is_digit_in_col(board, digit, col_idx) -> bool:
             return True
     return False
 
-def safe_replace(board, digit, row, col):
-    if board[row][col] != 0:
+def safe_replace(board_inst: Board, digit, row, col):
+    if board_inst.board[row][col] != 0:
         raise RuntimeError(f"Attempting to replace a digit")
-    board[row][col] = digit
+    board_inst.board[row][col] = digit
+    update_cell_notation(board_inst.cell_notation, row, col, digit)
 
 def technique_naked_single_row_or_column(board_inst: Board) -> bool:
     """
@@ -162,7 +204,10 @@ def technique_naked_single_row_or_column(board_inst: Board) -> bool:
     for row in range(9):
         missing_numbers_in_row = get_missing_numbers_in_row(board_inst.board, row)
         if len(missing_numbers_in_row) == 1:
-            board_inst.board[row][np.where(board_inst.board[row] == 0)[0]] = missing_numbers_in_row[0]
+            safe_replace(board_inst,
+                         missing_numbers_in_row[0],
+                         row = row,
+                         col = np.where(board_inst.board[row] == 0)[0])
             board_inst.last_step_description_str = f"In row {row + 1} there is only one missing digit: {missing_numbers_in_row[0]}"
             board_inst.last_used_technique = SudokuTechnique.NAKED_SINGLE_ROW_OR_COLUMN
             return True
@@ -170,7 +215,10 @@ def technique_naked_single_row_or_column(board_inst: Board) -> bool:
     for col in range(9):
         missing_numbers_in_col = get_missing_numbers_in_col(board_inst.board, col)
         if len(missing_numbers_in_col) == 1:
-            board_inst.board[np.where(board_inst.board[:, col] == 0)[0][0]][col] = missing_numbers_in_col[0]
+            safe_replace(board_inst,
+                         missing_numbers_in_col[0],
+                         row=np.where(board_inst.board[:, col] == 0)[0][0],
+                         col=col)
             board_inst.last_step_description_str = f"In column {col + 1} there is only one missing digit: {missing_numbers_in_col[0]}"
             board_inst.last_used_technique = SudokuTechnique.NAKED_SINGLE_ROW_OR_COLUMN
             return True
@@ -194,7 +242,10 @@ def technique_naked_single_block(board_inst: Board) -> bool:
                 for relative_row in range(3):
                     for relative_col in range(3):
                         if board_inst.board[3 * block_row + relative_row][3 * block_col + relative_col] == 0:
-                            board_inst.board[3 * block_row + relative_row][3 * block_col + relative_col] = missing_digit
+                            safe_replace(board_inst,
+                                         missing_digit,
+                                         row=3 * block_row + relative_row,
+                                         col=3 * block_col + relative_col)
                             board_inst.last_step_description_str = f"In block ({block_row + 1},{block_col + 1}) there is only one missing digit: {missing_digit}"
                             board_inst.last_used_technique = SudokuTechnique.NAKED_SINGLE_BLOCK
                             return True
@@ -323,6 +374,7 @@ def technique_metadata_box_line_interaction(board_inst: Board) -> bool:
                         is_same_optional_line_for_digit = False
                 if is_same_optional_line_for_digit:
                     new_metadata = [MetaDataType.LINE_OF_DIGIT, digit, block_row, block_col, optional_relative_line_for_digit]
+
                     if new_metadata not in board_inst.metadata_on_board:
                         board_inst.metadata_on_board.append(new_metadata)
                         board_inst.last_step_description_str = (
@@ -411,6 +463,86 @@ def technique_column_line_interaction(board_inst: Board) -> bool:
 
     return False
 
+def technique_naked_single(board_inst: Board) -> bool:
+    """
+    The technique looks at the cell notation matrix. if a cell is found with only one option - yay.
+    :param board_inst:
+    :return:
+    """
+    for row in range(9):
+        for col in range(9):
+            if len(board_inst.cell_notation[row][col]) == 1:
+                board_inst.last_used_technique = SudokuTechnique.NAKED_SINGLE
+                board_inst.last_step_description_str = "Looking at cell notation options, only one optional digit is possible in" \
+                                                        f" ({row+1}, {col+1}) - The digit {board_inst.cell_notation[row][col][0]}"
+                safe_replace(board_inst,
+                             board_inst.cell_notation[row][col][0],
+                             row,
+                             col)
+                return True
+
+    return False
+
+def technique_naked_triple(board_inst: Board) -> bool:
+    """
+    In a block, where 3 cells share only 3 total different options of numbers, all other cells in the block
+    cannot be filled with these numbers.
+    see https://www.youtube.com/watch?v=Mh8-MICdO6s&ab_channel=LearnSomething 9:31 - for an example.
+    :param board_inst:
+    :return:
+    """
+    for block_row in range(3):
+        for block_col in range(3):
+            for g1, g2, g3 in combinations(list(range(1, 10)), 3):
+                combined = [g1, g2, g3] # a digit triplet
+                num_of_cells_with_only_these_triplet_options = []
+                for relative_row in range(3):
+                    for relative_col in range(3):
+                        if board_inst.board[3 * block_row + relative_row][3 * block_col + relative_col] == 0 and \
+                           all(item in combined for item in board_inst.cell_notation[3 * block_row + relative_row][3 * block_col + relative_col]):
+                            num_of_cells_with_only_these_triplet_options.append([relative_row, relative_col])
+                if len(num_of_cells_with_only_these_triplet_options) == 3:
+                    found_new_information = False
+                    for digit in combined:
+                        for relative_row in range(3):
+                            for relative_col in range(3):
+                                if [relative_row, relative_col] not in num_of_cells_with_only_these_triplet_options and \
+                                   digit in board_inst.cell_notation[3 * block_row + relative_row][3 * block_col + relative_col]:
+                                    board_inst.cell_notation[3 * block_row + relative_row][3 * block_col + relative_col].remove(digit)
+                                    found_new_information = True
+                    if found_new_information:
+                        board_inst.last_used_technique = SudokuTechnique.NAKED_TRIPLE
+                        board_inst.last_step_description_str = f"In block ({block_row + 1},{block_col + 1}), the digits " \
+                                                                f"{combined} along with relative positions {num_of_cells_with_only_these_triplet_options}" \
+                                                                f" are a naked triplet. Therefore we can eliminate those digits from the cell notation" \
+                                                                f" of all other cells in block"
+                        return True
+
+    return False
+
+def technique_metadata_from_cell_notation(board_inst: Board) -> bool:
+    """
+    Example: Cell notation in block (1,2) should be that 8 is on the first line
+        |    6     **59***  *4789** | **489**  **489**     1    |    3        2     **578** |
+        |    3        2     *4789** |    6        5     **49*** | **478**     1     **78*** |
+        | **158**  **15***  **148** | **23***     7     **23*** | **458**     6        9    |
+        -------------------------------
+        | **189**     6        3    | *2589**  **289**  **259** | **17***     4     **17*** |
+        |    2        4        5    |    1        6        7    |    9        8        3    |
+        |    7     **19***  **189** | *3489**  **489**  **349** |    2        5        6    |
+        -------------------------------
+        |    4        3     **29*** | **259**     1        6    | **58***     7     **258** |
+        | **15***     7     **12*** | **25***     3        8    |    6        9        4    |
+        | **159**     8        6    |    7     **249**  *2459** | **15***     3     **125** |
+        -------------------------------
+    """
+    for digit in range(1,10):
+        for block_row in range(3):
+            for block_col in range(3):
+                pass
+
+    return False
+
 def next_step_sudoku_human_solver(board_inst: Board) -> bool:
     technique_naked_single_row_or_column_success = technique_naked_single_row_or_column(board_inst)
     if technique_naked_single_row_or_column_success:
@@ -432,9 +564,23 @@ def next_step_sudoku_human_solver(board_inst: Board) -> bool:
     if technique_column_line_interaction_success:
         return True
 
+    technique_naked_single_success = technique_naked_single(board_inst)
+    if technique_naked_single_success:
+        return True
+
+    technique_naked_triple_success = technique_naked_triple(board_inst)
+    if technique_naked_triple_success:
+        return True
+
     return False
 
-def cli_print_board(board_inst: Board) -> None:
+def pad_with_char(s, required_length, char = '*'):
+    needed = required_length - len(s)
+    left = needed // 2
+    right = needed - left
+    return char * left + s + char * right
+
+def cli_print_board(board_inst: Board, print_cell_notation = False) -> None:
     if board_inst.last_used_technique is not None:
         print("Last used technique:", board_inst.last_used_technique.name)
         print("Description:", board_inst.last_step_description_str)
@@ -452,8 +598,27 @@ def cli_print_board(board_inst: Board) -> None:
         print("|")
     print("-------------------------------")
 
+    if print_cell_notation:
+        for r in range(9):
+            if r % 3 == 0:
+                print("-------------------------------")
+            for c in range(9):
+                if c % 3 == 0:
+                    print("|", end="")
+                print(" ", end="")
+                if board_inst.board[r][c] != 0:
+                    print("   ", str(board_inst.board[r][c]), "   ", sep="", end=" ")
+                else:
+                    if len(board_inst.cell_notation[r][c]) > 5:
+                        print("**...**", end=" ")
+                    else:
+                        print(pad_with_char(''.join(str(x) for x in board_inst.cell_notation[r][c]), 7),
+                              sep="", end=" ")
+            print("|")
+        print("-------------------------------")
+
 if __name__ == "__main__":
-    example_board2 = np.array([[0, 0, 0, 7, 0, 0, 0, 8, 0],
+    example_board3 = np.array([[0, 0, 0, 7, 0, 0, 0, 8, 0],
                               [0, 9, 0, 0, 0, 3, 1, 0, 0],
                               [0, 0, 6, 8, 0, 5, 0, 7, 0],
                               [0, 2, 0, 6, 0, 0, 0, 4, 9],
@@ -463,7 +628,7 @@ if __name__ == "__main__":
                               [3, 7, 0, 0, 0, 0, 0, 0, 6],
                               [1, 0, 5, 0, 0, 4, 0, 0, 0]])
 
-    example_board = np.array([[9, 0, 3, 0, 0, 0, 0, 0, 2],
+    example_board2 = np.array([[9, 0, 3, 0, 0, 0, 0, 0, 2],
                                [0, 6, 0, 4, 9, 0, 1, 0, 3],
                                [0, 0, 0, 1, 0, 0, 0, 0, 0],
                                [0, 0, 0, 0, 0, 0, 9, 0, 0],
@@ -473,6 +638,36 @@ if __name__ == "__main__":
                                [0, 0, 0, 0, 0, 0, 7, 5, 9],
                                [0, 0, 0, 3, 6, 7, 0, 0, 0]])
 
+    example_board = np.array([[0, 0, 0, 0, 0, 0, 3, 2, 0],
+                              [3, 2, 0, 6, 5, 0, 0, 1, 0],
+                              [0, 0, 0, 0, 7, 0, 0, 0, 9],
+                              [0, 6, 3, 0, 0, 0, 0, 0, 0],
+                              [0, 4, 5, 1, 6, 7, 9, 8, 0],
+                              [0, 0, 0, 0, 0, 0, 2, 5, 0],
+                              [4, 0, 0, 0, 1, 0, 0, 0, 0],
+                              [0, 7, 0, 0, 3, 8, 0, 9, 4],
+                              [0, 8, 6, 0, 0, 0, 0, 0, 0]]) # https://www.youtube.com/watch?v=Mh8-MICdO6s&ab_channel=LearnSomething
+
+    example_board = np.array([[6, 0, 0, 0, 0, 0, 3, 2, 0],
+                              [3, 2, 0, 6, 5, 0, 0, 1, 0],
+                              [0, 0, 0, 0, 7, 0, 0, 6, 9],
+                              [0, 6, 3, 0, 0, 0, 0, 4, 0],
+                              [2, 4, 5, 1, 6, 7, 9, 8, 3],
+                              [7, 0, 0, 0, 0, 0, 2, 5, 6],
+                              [4, 3, 0, 0, 1, 6, 0, 7, 0],
+                              [0, 7, 0, 0, 3, 8, 6, 9, 4],
+                              [0, 8, 6, 7, 0, 0, 0, 3, 0]])  # https://www.youtube.com/watch?v=Mh8-MICdO6s&ab_channel=LearnSomething - minute 7:21
+
+    example_board4 = np.array([[0, 0, 3, 8, 0, 0, 5, 1, 0],
+                               [0, 0, 8, 7, 0, 0, 9, 3, 0],
+                               [1, 0, 0, 3, 0, 5, 7, 2, 8],
+                               [0, 0, 0, 2, 0, 0, 8, 4, 9],
+                               [8, 0, 1, 9, 0, 6, 2, 5, 7],
+                               [0, 0, 0, 5, 0, 0, 1, 6, 3],
+                               [9, 6, 4, 1, 2, 7, 3, 8, 5],
+                               [3, 8, 2, 6, 5, 9, 4, 7, 1],
+                               [0, 1, 0, 4, 0, 0, 6, 9, 2]])    # a needed x-wing technique example
+
     example_board_inst = Board(example_board)
 
     cli_print_board(example_board_inst)
@@ -481,7 +676,8 @@ if __name__ == "__main__":
     while np.any(example_board_inst.board == 0):
         success = next_step_sudoku_human_solver(example_board_inst)
         if not success:
-            print("Failed to solve the Sudoku board")
+            print("Failed to solve the Sudoku board:")
+            cli_print_board(example_board_inst, print_cell_notation=True)
             break
         else:
             print("Next step found. current board:")
