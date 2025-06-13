@@ -20,10 +20,21 @@ from datetime import datetime
 from enum import Enum
 
 import numpy as np
-from numpy.ma.extras import row_stack
 
-from Loader.SudokuImageExtractor.digit_recognition.digit_classification_model_training_and_using import \
-    add_no_digit_images
+class SudokuTechnique(Enum):
+    NAKED_SINGLE_ROW_OR_COLUMN = 1,
+    NAKED_SINGLE_BLOCK = 2,
+    BOX_LINE_INTERACTION = 3,
+    METADATA_BOX_LINE_INTERACTION = 4,
+    COLUMN_LINE_INTERACTION = 5
+
+class Board:
+    def __init__(self, board):
+        self.board = board.copy()
+        self.original_board = self.board.copy()
+        self.metadata_on_board = []
+        self.last_used_technique = None
+        self.last_step_description_str = ""
 
 def is_valid(board, row, column, digit):
     """
@@ -141,32 +152,110 @@ def safe_replace(board, digit, row, col):
         raise RuntimeError(f"Attempting to replace a digit")
     board[row][col] = digit
 
-def technique_1(board: np.ndarray, metadata_on_board_inst) -> bool:
+def technique_naked_single_row_or_column(board_inst: Board) -> bool:
     """
-    The technique eliminates places for a digit based on the digit already placed in the line / column.
-    If a digit is found that for it only one place in a given block is avaialbe it updates the board accordingly,
-    and returns True.
-    :param metadata_on_board_inst: 
+    If only one number is left in a column / line.
     :param board:
+    :param metadata_on_board_inst:
     :return:
     """
+    for row in range(9):
+        missing_numbers_in_row = get_missing_numbers_in_row(board_inst.board, row)
+        if len(missing_numbers_in_row) == 1:
+            board_inst.board[row][np.where(board_inst.board[row] == 0)[0]] = missing_numbers_in_row[0]
+            board_inst.last_step_description_str = f"In row {row + 1} there is only one missing digit: {missing_numbers_in_row[0]}"
+            board_inst.last_used_technique = SudokuTechnique.NAKED_SINGLE_ROW_OR_COLUMN
+            return True
+
+    for col in range(9):
+        missing_numbers_in_col = get_missing_numbers_in_col(board_inst.board, col)
+        if len(missing_numbers_in_col) == 1:
+            board_inst.board[np.where(board_inst.board[:, col] == 0)[0][0]][col] = missing_numbers_in_col[0]
+            board_inst.last_step_description_str = f"In column {col + 1} there is only one missing digit: {missing_numbers_in_col[0]}"
+            board_inst.last_used_technique = SudokuTechnique.NAKED_SINGLE_ROW_OR_COLUMN
+            return True
+
+    return False
+
+def technique_naked_single_block(board_inst: Board) -> bool:
+    """
+    If only one number is left in a block.
+    :return:
+    """
+    for block_row in range(3):
+        for block_col in range(3):
+            num_of_missing_numbers_in_block = np.count_nonzero(board_inst.board[3 * block_row : 3 * block_row + 3, 3 * block_col : 3 * block_col + 3] == 0)
+            if num_of_missing_numbers_in_block == 1:
+                missing_digit = 0
+                for digit in range(1, 10):
+                    if not is_digit_in_block(board_inst.board, digit, block_row, block_col):
+                        missing_digit = digit
+
+                for relative_row in range(3):
+                    for relative_col in range(3):
+                        if board_inst.board[3 * block_row + relative_row][3 * block_col + relative_col] == 0:
+                            board_inst.board[3 * block_row + relative_row][3 * block_col + relative_col] = missing_digit
+                            board_inst.last_step_description_str = f"In block ({block_row + 1},{block_col + 1}) there is only one missing digit: {missing_digit}"
+                            board_inst.last_used_technique = SudokuTechnique.NAKED_SINGLE_BLOCK
+                            return True
+    return False
+
+def technique_box_line_interaction(board_inst: Board) -> bool:
+    """
+    The technique eliminates places for a digit based on the digit already placed in the line / column.
+    If a digit is found that for it only one place in a given block is available it updates the board accordingly,
+    and returns True.
+    :return:
+    """
+
+    # First try to do it without using metadata.
     for digit in range(1, 10):
         for block_row in range(3):
             for block_col in range(3):
-                if is_digit_in_block(board, digit, block_row, block_col):
+                if is_digit_in_block(board_inst.board, digit, block_row, block_col):
                     continue
                 optional_relative_places_for_digit = np.array([[0, 0], [0, 1], [0, 2],
                                                                [1, 0], [1, 1], [1, 2],
                                                                [2, 0], [2, 1], [2, 2]])
                 for optional_relative_place in optional_relative_places_for_digit:
-                    if board[3 * block_row + optional_relative_place[0]][3 * block_col + optional_relative_place[1]] != 0:
+                    if board_inst.board[3 * block_row + optional_relative_place[0]][3 * block_col + optional_relative_place[1]] != 0:
                         optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
-                    if is_digit_in_line(board, digit, 3 * block_row + optional_relative_place[0]):
+                    if is_digit_in_line(board_inst.board, digit, 3 * block_row + optional_relative_place[0]):
                         optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
-                    if is_digit_in_col(board, digit, 3 * block_col + optional_relative_place[1]):
+                    if is_digit_in_col(board_inst.board, digit, 3 * block_col + optional_relative_place[1]):
                         optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
 
-                    for metadata in metadata_on_board_inst:
+                if optional_relative_places_for_digit.shape == (1,2):
+                    safe_replace(board_inst.board,
+                                 digit,
+                                 row = 3 * block_row + optional_relative_places_for_digit[0][0],
+                                 col = 3 * block_col + optional_relative_places_for_digit[0][1])
+                    board_inst.last_step_description_str = (f"The digit {digit} in block ({block_row + 1},{block_col + 1}) can only "
+                                                 f"be placed in line"
+                                                 f" {3 * block_row + optional_relative_places_for_digit[0][0] + 1} "
+                                                 f"and in column"
+                                                 f" {3 * block_col + optional_relative_places_for_digit[0][1] + 1} ")
+                    board_inst.last_used_technique = SudokuTechnique.BOX_LINE_INTERACTION
+                    return True
+
+    # Ok. Sometimes we need to use the metadata
+    for digit in range(1, 10):
+        for block_row in range(3):
+            for block_col in range(3):
+                if is_digit_in_block(board_inst.board, digit, block_row, block_col):
+                    continue
+                optional_relative_places_for_digit = np.array([[0, 0], [0, 1], [0, 2],
+                                                               [1, 0], [1, 1], [1, 2],
+                                                               [2, 0], [2, 1], [2, 2]])
+                for optional_relative_place in optional_relative_places_for_digit:
+                    if board_inst.board[3 * block_row + optional_relative_place[0]][3 * block_col + optional_relative_place[1]] != 0:
+                        optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
+                    if is_digit_in_line(board_inst.board, digit, 3 * block_row + optional_relative_place[0]):
+                        optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
+                    if is_digit_in_col(board_inst.board, digit, 3 * block_col + optional_relative_place[1]):
+                        optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
+
+                    for metadata in board_inst.metadata_on_board:
                         if metadata[1] == digit:
                             if metadata[0] == MetaDataType.LINE_OF_DIGIT and \
                                 metadata[2] == block_row and \
@@ -179,14 +268,21 @@ def technique_1(board: np.ndarray, metadata_on_board_inst) -> bool:
                                 optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
 
                 if optional_relative_places_for_digit.shape == (1,2):
-                    safe_replace(board,
+                    safe_replace(board_inst.board,
                                  digit,
                                  row = 3 * block_row + optional_relative_places_for_digit[0][0],
                                  col = 3 * block_col + optional_relative_places_for_digit[0][1])
+                    board_inst.last_step_description_str = (f"The digit {digit} in block ({block_row + 1},{block_col + 1}) can only "
+                                                 f"be placed in line"
+                                                 f" {3 * block_row + optional_relative_places_for_digit[0][0] + 1} "
+                                                 f"and in column"
+                                                 f" {3 * block_col + optional_relative_places_for_digit[0][1] + 1} ")
+                    board_inst.last_used_technique = SudokuTechnique.BOX_LINE_INTERACTION
                     return True
+
     return False
 
-def technique_2(board: np.ndarray, metadata_on_board_inst) -> bool:
+def technique_metadata_box_line_interaction(board_inst: Board) -> bool:
     """
     The technique is used to find new metadata.
     The specific metadata it finds is to find a specific row / col in a block where a digit must be.
@@ -197,22 +293,22 @@ def technique_2(board: np.ndarray, metadata_on_board_inst) -> bool:
     for digit in range(1, 10):
         for block_row in range(3):
             for block_col in range(3):
-                if is_digit_in_block(board, digit, block_row, block_col):
+                if is_digit_in_block(board_inst.board, digit, block_row, block_col):
                     continue
                 optional_relative_places_for_digit = np.array([[0, 0], [0, 1], [0, 2],
                                                                [1, 0], [1, 1], [1, 2],
                                                                [2, 0], [2, 1], [2, 2]])
 
                 for optional_relative_place in optional_relative_places_for_digit:
-                    if board[3 * block_row + optional_relative_place[0]][3 * block_col + optional_relative_place[1]] != 0:
+                    if board_inst.board[3 * block_row + optional_relative_place[0]][3 * block_col + optional_relative_place[1]] != 0:
                         optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit,
                                                                                 optional_relative_place)
                         continue
-                    if is_digit_in_line(board, digit, 3 * block_row + optional_relative_place[0]):
+                    if is_digit_in_line(board_inst.board, digit, 3 * block_row + optional_relative_place[0]):
                         optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit,
                                                                                 optional_relative_place)
                         continue
-                    if is_digit_in_col(board, digit, 3 * block_col + optional_relative_place[1]):
+                    if is_digit_in_col(board_inst.board, digit, 3 * block_col + optional_relative_place[1]):
                         optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit,
                                                                                 optional_relative_place)
                         continue
@@ -227,9 +323,13 @@ def technique_2(board: np.ndarray, metadata_on_board_inst) -> bool:
                         is_same_optional_line_for_digit = False
                 if is_same_optional_line_for_digit:
                     new_metadata = [MetaDataType.LINE_OF_DIGIT, digit, block_row, block_col, optional_relative_line_for_digit]
-                    if new_metadata not in metadata_on_board_inst:
-                        metadata_on_board_inst.append(new_metadata)
-                        print("new metadata: ", new_metadata)
+                    if new_metadata not in board_inst.metadata_on_board:
+                        board_inst.metadata_on_board.append(new_metadata)
+                        board_inst.last_step_description_str = (
+                            f"New metadata. The digit {digit} in block ({block_row + 1},{block_col + 1}) can only "
+                            f"be placed in line"
+                            f" {3 * block_row + optional_relative_line_for_digit + 1} ")
+                        board_inst.last_used_technique = SudokuTechnique.METADATA_BOX_LINE_INTERACTION
                         return True
 
                 is_same_optional_col_for_digit = True
@@ -239,8 +339,13 @@ def technique_2(board: np.ndarray, metadata_on_board_inst) -> bool:
                         is_same_optional_col_for_digit = False
                 if is_same_optional_col_for_digit:
                     new_metadata = [MetaDataType.COL_OF_DIGIT, digit, block_row, block_col, optional_relative_col_for_digit]
-                    if new_metadata not in metadata_on_board_inst:
-                        metadata_on_board_inst.append(new_metadata)
+                    if new_metadata not in board_inst.metadata_on_board:
+                        board_inst.metadata_on_board.append(new_metadata)
+                        board_inst.last_step_description_str = (
+                            f"New metadata. The digit {digit} in block ({block_row + 1},{block_col + 1}) can only "
+                            f"be placed in column"
+                            f" {3 * block_col + optional_relative_col_for_digit + 1} ")
+                        board_inst.last_used_technique = SudokuTechnique.METADATA_BOX_LINE_INTERACTION
                         return True
 
     return False
@@ -259,61 +364,80 @@ def get_missing_numbers_in_col(board, col):
             missing_numbers.remove(board[row][col])
     return missing_numbers
 
-def technique_3(board: np.ndarray, metadata_on_board_inst) -> bool:
+def technique_column_line_interaction(board_inst: Board) -> bool:
     """
     The technique procedure:
-    Look at a specific line / column. look at the missiing numbers.
+    Look at a specific line / column. look at the missing numbers.
     If only one number is possible, because all other numbers are already in the column, we found it!
-    :param board:
-    :param metadata_on_board_inst:
     :return:
     """
     for row in range(9):
         for col in range(9):
-            if board[row][col] == 0:
-                optional_numbers_for_slot = get_missing_numbers_in_row(board, row)
+            if board_inst.board[row][col] == 0:
+                optional_numbers_for_slot = get_missing_numbers_in_row(board_inst.board, row)
+                optional_numbers_for_slot_copy = optional_numbers_for_slot.copy()
                 for missing_number in optional_numbers_for_slot:
-                    if np.any(board[:, col] == missing_number):
+                    if np.any(board_inst.board[:, col] == missing_number):
                         optional_numbers_for_slot.remove(missing_number)
                 if len(optional_numbers_for_slot) == 1:
-                    safe_replace(board,
+                    safe_replace(board_inst.board,
                                  optional_numbers_for_slot[0],
                                  row=row,
                                  col=col)
+                    board_inst.last_step_description_str = (f"In row {row + 1}, missing numbers are: {optional_numbers_for_slot_copy}."
+                                                 f" However only {optional_numbers_for_slot[0]} can be placed in column {col + 1}.")
+                    board_inst.last_used_technique = SudokuTechnique.COLUMN_LINE_INTERACTION
                     return True
 
     for col in range(9):
         for row in range(9):
-            if board[row][col] == 0:
-                optional_numbers_for_slot = get_missing_numbers_in_col(board, col)
+            if board_inst.board[row][col] == 0:
+                optional_numbers_for_slot = get_missing_numbers_in_col(board_inst.board, col)
+                optional_numbers_for_slot_copy = optional_numbers_for_slot.copy()
                 for missing_number in optional_numbers_for_slot:
-                    if np.any(board[row, :] == missing_number):
+                    if np.any(board_inst.board[row, :] == missing_number):
                         optional_numbers_for_slot.remove(missing_number)
                 if len(optional_numbers_for_slot) == 1:
-                    safe_replace(board,
+                    safe_replace(board_inst.board,
                                  optional_numbers_for_slot[0],
                                  row=row,
                                  col=col)
+                    board_inst.last_step_description_str = (
+                        f"In column {col + 1}, missing numbers are: {optional_numbers_for_slot_copy}."
+                        f"However all but one candidate cannot be intersecting with row {row + 1}."
+                        f"Therefore missing digit is: {optional_numbers_for_slot[0]}")
+                    board_inst.last_used_technique = SudokuTechnique.COLUMN_LINE_INTERACTION
                     return True
 
     return False
 
-def next_step_sudoku_human_solver(board: np.ndarray, metadata_on_board_inst) -> bool:
-    technique1_success = technique_1(board, metadata_on_board_inst)
-    if technique1_success:
+def next_step_sudoku_human_solver(board_inst: Board) -> bool:
+    technique_naked_single_row_or_column_success = technique_naked_single_row_or_column(board_inst)
+    if technique_naked_single_row_or_column_success:
         return True
 
-    technique2_success = technique_2(board, metadata_on_board_inst)
-    if technique2_success:
+    technique_naked_single_block_success = technique_naked_single_block(board_inst)
+    if technique_naked_single_block_success:
         return True
 
-    technique3_success = technique_3(board, metadata_on_board_inst)
-    if technique3_success:
+    technique_box_line_interaction_success = technique_box_line_interaction(board_inst)
+    if technique_box_line_interaction_success:
+        return True
+
+    technique_metadata_box_line_interaction_success = technique_metadata_box_line_interaction(board_inst)
+    if technique_metadata_box_line_interaction_success:
+        return True
+
+    technique_column_line_interaction_success = technique_column_line_interaction(board_inst)
+    if technique_column_line_interaction_success:
         return True
 
     return False
 
-def cli_print_board(board: np.ndarray) -> None:
+def cli_print_board(board_inst: Board) -> None:
+    if board_inst.last_used_technique is not None:
+        print("Last used technique:", board_inst.last_used_technique.name)
+        print("Description:", board_inst.last_step_description_str)
     for r in range(9):
         if r % 3 == 0:
             print("-------------------------------")
@@ -321,8 +445,8 @@ def cli_print_board(board: np.ndarray) -> None:
             if c % 3 == 0:
                 print("|", end="")
             print(" ", end="")
-            if board[r][c] != 0:
-                print(str(board[r][c]), end=" ")
+            if board_inst.board[r][c] != 0:
+                print(str(board_inst.board[r][c]), end=" ")
             else:
                 print(" ", end=" ")
         print("|")
@@ -349,19 +473,19 @@ if __name__ == "__main__":
                                [0, 0, 0, 0, 0, 0, 7, 5, 9],
                                [0, 0, 0, 3, 6, 7, 0, 0, 0]])
 
-    metadata_on_board = []
+    example_board_inst = Board(example_board)
 
-    cli_print_board(example_board)
+    cli_print_board(example_board_inst)
 
     # Continue as long as there are zeros in the board. i.e the board is not solved
-    while np.any(example_board == 0):
-        success = next_step_sudoku_human_solver(example_board, metadata_on_board)
+    while np.any(example_board_inst.board == 0):
+        success = next_step_sudoku_human_solver(example_board_inst)
         if not success:
             print("Failed to solve the Sudoku board")
             break
         else:
             print("Next step found. current board:")
-            cli_print_board(example_board)
+            cli_print_board(example_board_inst)
 
     if not np.any(example_board == 0):
         print("Board solved successfully")
