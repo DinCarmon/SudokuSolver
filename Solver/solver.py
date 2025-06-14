@@ -16,9 +16,13 @@ until a valid solution is found. Here's how it works:
 
 This process continues until the entire board is filled with valid numbers, or it’s determined that no solution exists.
 """
+
+# Apparantly sudoklue does it better :(
+
 from datetime import datetime
 from enum import Enum
 from itertools import combinations
+from itertools import product
 from collections import Counter
 import numpy as np
 
@@ -30,12 +34,14 @@ class SudokuTechnique(Enum):
     METADATA_BOX_LINE_INTERACTION = 4,
     COLUMN_LINE_INTERACTION = 5,
     NAKED_SINGLE = 6,
-    NAKED_TRIPLE = 7,
-    METADATA_FROM_CELL_NOTATION = 8,
-    CELL_NOTATION_FROM_METADATA = 9,
-    SKYSCRAPER = 10,
-    TWO_STRING_KITE = 11,
-    EMPTY_RECTANGLE = 12
+    NAKED_DOUBLE = 7
+    NAKED_TRIPLE = 8,
+    METADATA_FROM_CELL_NOTATION = 9,
+    CELL_NOTATION_FROM_METADATA = 10,
+    SKYSCRAPER = 11,
+    TWO_STRING_KITE = 12,
+    EMPTY_RECTANGLE = 13,
+    XY_WING = 14
 
 def update_cell_notation(cell_notation, row, col, digit):
     """
@@ -448,7 +454,7 @@ def technique_column_line_interaction(board_inst: Board) -> bool:
                     if np.any(board_inst.board[:, col] == missing_number):
                         optional_numbers_for_slot.remove(missing_number)
                 if len(optional_numbers_for_slot) == 1:
-                    safe_replace(board_inst.board,
+                    safe_replace(board_inst,
                                  optional_numbers_for_slot[0],
                                  row=row,
                                  col=col)
@@ -499,10 +505,89 @@ def technique_naked_single(board_inst: Board) -> bool:
 
     return False
 
+def technique_naked_double(board_inst: Board) -> bool:
+    for block_row in range(3):
+        for block_col in range(3):
+            for g1, g2 in combinations(list(range(1, 10)), 2):
+                combined = [g1, g2] # a digit double
+                num_of_cells_with_only_these_double_options = []
+                for relative_row in range(3):
+                    for relative_col in range(3):
+                        if board_inst.board[3 * block_row + relative_row][3 * block_col + relative_col] == 0 and \
+                           all(item in combined for item in board_inst.cell_notation[3 * block_row + relative_row][3 * block_col + relative_col]):
+                            num_of_cells_with_only_these_double_options.append([relative_row, relative_col])
+                if len(num_of_cells_with_only_these_double_options) == 2:
+                    found_new_information = False
+                    for digit in combined:
+                        for relative_row in range(3):
+                            for relative_col in range(3):
+                                if [relative_row, relative_col] not in num_of_cells_with_only_these_double_options and \
+                                   digit in board_inst.cell_notation[3 * block_row + relative_row][3 * block_col + relative_col]:
+                                    board_inst.cell_notation[3 * block_row + relative_row][3 * block_col + relative_col].remove(digit)
+                                    found_new_information = True
+                    if found_new_information:
+                        board_inst.last_used_technique = SudokuTechnique.NAKED_TRIPLE
+                        board_inst.last_step_description_str = f"In block ({block_row + 1},{block_col + 1}), the digits " \
+                                                                f"{combined} along with relative positions {num_of_cells_with_only_these_double_options}" \
+                                                                f" are a naked double. Therefore we can eliminate those digits from the cell notation" \
+                                                                f" of all other cells in block"
+                        return True
+
+    for row in range(9):
+        for c1, c2 in combinations(list(range(1, 10)), 2):
+            combined = [c1, c2]  # a digit triplet
+            num_of_cells_with_only_these_double_options = []
+            for col in range(9):
+                if board_inst.board[row][col] == 0 and\
+                    all(item in combined for item in board_inst.cell_notation[row][col]):
+                    num_of_cells_with_only_these_double_options.append([row, col])
+            if len(num_of_cells_with_only_these_double_options) == 2:
+                found_new_information = False
+                for digit in combined:
+                    for col in range(9):
+                        if [row, col] not in num_of_cells_with_only_these_double_options and \
+                                digit in board_inst.cell_notation[row][col]:
+                            board_inst.cell_notation[row][col].remove(digit)
+                            found_new_information = True
+                if found_new_information:
+                    board_inst.last_used_technique = SudokuTechnique.NAKED_TRIPLE
+                    board_inst.last_step_description_str = f"In row {row + 1}, the digits " \
+                                                           f"{combined} along with relative positions {num_of_cells_with_only_these_double_options}" \
+                                                           f" are a naked double. Therefore we can eliminate those digits from the cell notation" \
+                                                           f" of all other cells in the row"
+                    return True
+
+    for col in range(9):
+        for r1, r2 in combinations(list(range(1, 10)), 2):
+            combined = [r1, r2]  # a digit triplet
+            num_of_cells_with_only_these_double_options = []
+            for row in range(9):
+                if board_inst.board[row][col] == 0 and\
+                    all(item in combined for item in board_inst.cell_notation[row][col]):
+                    num_of_cells_with_only_these_double_options.append([row, col])
+            if len(num_of_cells_with_only_these_double_options) == 2:
+                found_new_information = False
+                for digit in combined:
+                    for row in range(9):
+                        if [row, col] not in num_of_cells_with_only_these_double_options and \
+                                digit in board_inst.cell_notation[row][col]:
+                            board_inst.cell_notation[row][col].remove(digit)
+                            found_new_information = True
+                if found_new_information:
+                    board_inst.last_used_technique = SudokuTechnique.NAKED_TRIPLE
+                    board_inst.last_step_description_str = f"In col {col + 1}, the digits " \
+                                                           f"{combined} along with relative positions {num_of_cells_with_only_these_double_options}" \
+                                                           f" are a naked double. Therefore we can eliminate those digits from the cell notation" \
+                                                           f" of all other cells in the column"
+                    return True
+
+    return False
+
 def technique_naked_triple(board_inst: Board) -> bool:
     """
     In a block, where 3 cells share only 3 total different options of numbers, all other cells in the block
     cannot be filled with these numbers.
+    This is also true for lines / columns.
     see https://www.youtube.com/watch?v=Mh8-MICdO6s&ab_channel=LearnSomething 9:31 - for an example.
     :param board_inst:
     :return:
@@ -533,6 +618,54 @@ def technique_naked_triple(board_inst: Board) -> bool:
                                                                 f" are a naked triplet. Therefore we can eliminate those digits from the cell notation" \
                                                                 f" of all other cells in block"
                         return True
+
+    for row in range(9):
+        for c1, c2, c3 in combinations(list(range(1, 10)), 3):
+            combined = [c1, c2, c3]  # a digit triplet
+            num_of_cells_with_only_these_triplet_options = []
+            for col in range(9):
+                if board_inst.board[row][col] == 0 and\
+                    all(item in combined for item in board_inst.cell_notation[row][col]):
+                    num_of_cells_with_only_these_triplet_options.append([row, col])
+            if len(num_of_cells_with_only_these_triplet_options) == 3:
+                found_new_information = False
+                for digit in combined:
+                    for col in range(9):
+                        if [row, col] not in num_of_cells_with_only_these_triplet_options and \
+                                digit in board_inst.cell_notation[row][col]:
+                            board_inst.cell_notation[row][col].remove(digit)
+                            found_new_information = True
+                if found_new_information:
+                    board_inst.last_used_technique = SudokuTechnique.NAKED_TRIPLE
+                    board_inst.last_step_description_str = f"In row {row + 1}, the digits " \
+                                                           f"{combined} along with relative positions {num_of_cells_with_only_these_triplet_options}" \
+                                                           f" are a naked triplet. Therefore we can eliminate those digits from the cell notation" \
+                                                           f" of all other cells in the row"
+                    return True
+
+    for col in range(9):
+        for r1, r2, r3 in combinations(list(range(1, 10)), 3):
+            combined = [r1, r2, r3]  # a digit triplet
+            num_of_cells_with_only_these_triplet_options = []
+            for row in range(9):
+                if board_inst.board[row][col] == 0 and\
+                    all(item in combined for item in board_inst.cell_notation[row][col]):
+                    num_of_cells_with_only_these_triplet_options.append([row, col])
+            if len(num_of_cells_with_only_these_triplet_options) == 3:
+                found_new_information = False
+                for digit in combined:
+                    for row in range(9):
+                        if [row, col] not in num_of_cells_with_only_these_triplet_options and \
+                                digit in board_inst.cell_notation[row][col]:
+                            board_inst.cell_notation[row][col].remove(digit)
+                            found_new_information = True
+                if found_new_information:
+                    board_inst.last_used_technique = SudokuTechnique.NAKED_TRIPLE
+                    board_inst.last_step_description_str = f"In col {col + 1}, the digits " \
+                                                           f"{combined} along with relative positions {num_of_cells_with_only_these_triplet_options}" \
+                                                           f" are a naked triplet. Therefore we can eliminate those digits from the cell notation" \
+                                                           f" of all other cells in the column"
+                    return True
 
     return False
 
@@ -943,6 +1076,43 @@ def technique_empty_rectangle(board_inst: Board) -> bool:
 
     return False
 
+def technique_xy_wing(board_inst: Board):
+    for row in range(9):
+        for col in range(9):
+            if len(board_inst.cell_notation[row][col]) == 2:
+                x_digit = board_inst.cell_notation[row][col][0]
+                y_digit = board_inst.cell_notation[row][col][1]
+                for z_digit in range(1, 10):
+                    if z_digit == x_digit or z_digit == y_digit:
+                        continue
+
+                    positions_with_xz_remaining = []
+                    positions_with_yz_remaining = []
+                    for position in remove_uninflicted_positions(row, col):
+                        if len(board_inst.cell_notation[position[0]][position[1]]) == 2:
+                            if x_digit in board_inst.cell_notation[position[0]][position[1]] and \
+                                z_digit in board_inst.cell_notation[position[0]][position[1]]:
+                                positions_with_xz_remaining.append(position)
+                            if y_digit in board_inst.cell_notation[position[0]][position[1]] and \
+                                z_digit in board_inst.cell_notation[position[0]][position[1]]:
+                                positions_with_yz_remaining.append(position)
+                    for position_xz, position_yz in list(product(positions_with_xz_remaining, positions_with_yz_remaining)):
+                        inflicted_positions = remove_uninflicted_positions(position_yz[0], position_yz[1],
+                                                                           remove_uninflicted_positions(position_xz[0], position_xz[1]))
+                        affected_positions = []
+                        for position in inflicted_positions:
+                            if z_digit in board_inst.cell_notation[position[0]][position[1]]:
+                                board_inst.cell_notation[position[0]][position[1]].remove(z_digit)
+                                affected_positions.append(position)
+
+                        if len(affected_positions) > 0:
+                            board_inst.last_used_technique = SudokuTechnique.XY_WING
+                            board_inst.last_step_description_str = (f"XY technique was used. where X = {x_digit}, Y = {y_digit}, Z = {z_digit}. "
+                                                                    f"XY position: ({row},{col}), YZ position: ({position_yz[0]},{position_yz[1]}), "
+                                                                    f"XZ position: ({position_xz[0]},{position_xz[1]}). "
+                                                                    f"Inflicted positions: {affected_positions}")
+                            return True
+    return False
 
 def next_step_sudoku_human_solver(board_inst: Board) -> bool:
     technique_naked_single_row_or_column_success = technique_naked_single_row_or_column(board_inst)
@@ -969,6 +1139,10 @@ def next_step_sudoku_human_solver(board_inst: Board) -> bool:
     if technique_naked_single_success:
         return True
 
+    technique_naked_double_success = technique_naked_double(board_inst)
+    if technique_naked_double_success:
+        return True
+
     technique_naked_triple_success = technique_naked_triple(board_inst)
     if technique_naked_triple_success:
         return True
@@ -991,6 +1165,10 @@ def next_step_sudoku_human_solver(board_inst: Board) -> bool:
 
     technique_empty_rectangle_success = technique_empty_rectangle(board_inst)
     if technique_empty_rectangle_success:
+        return True
+
+    technique_xy_wing_success = technique_xy_wing(board_inst)
+    if technique_xy_wing_success:
         return True
 
     return False
@@ -1039,7 +1217,7 @@ def cli_print_board(board_inst: Board, print_cell_notation = False) -> None:
         print("-------------------------------")
 
 if __name__ == "__main__":
-    example_board3 = np.array([[0, 0, 0, 7, 0, 0, 0, 8, 0],
+    example_board = np.array([[0, 0, 0, 7, 0, 0, 0, 8, 0],
                               [0, 9, 0, 0, 0, 3, 1, 0, 0],
                               [0, 0, 6, 8, 0, 5, 0, 7, 0],
                               [0, 2, 0, 6, 0, 0, 0, 4, 9],
@@ -1049,7 +1227,7 @@ if __name__ == "__main__":
                               [3, 7, 0, 0, 0, 0, 0, 0, 6],
                               [1, 0, 5, 0, 0, 4, 0, 0, 0]])
 
-    example_board2 = np.array([[9, 0, 3, 0, 0, 0, 0, 0, 2],
+    example_board = np.array([[9, 0, 3, 0, 0, 0, 0, 0, 2],
                                [0, 6, 0, 4, 9, 0, 1, 0, 3],
                                [0, 0, 0, 1, 0, 0, 0, 0, 0],
                                [0, 0, 0, 0, 0, 0, 9, 0, 0],
@@ -1069,7 +1247,7 @@ if __name__ == "__main__":
                               [0, 7, 0, 0, 3, 8, 0, 9, 4],
                               [0, 8, 6, 0, 0, 0, 0, 0, 0]]) # https://www.youtube.com/watch?v=Mh8-MICdO6s&ab_channel=LearnSomething
 
-    example_board = np.array([[6, 0, 0, 0, 0, 0, 3, 2, 0],
+    example_board5 = np.array([[6, 0, 0, 0, 0, 0, 3, 2, 0],
                               [3, 2, 0, 6, 5, 0, 0, 1, 0],
                               [0, 0, 0, 0, 7, 0, 0, 6, 9],
                               [0, 6, 3, 0, 0, 0, 0, 4, 0],
@@ -1079,7 +1257,7 @@ if __name__ == "__main__":
                               [0, 7, 0, 0, 3, 8, 6, 9, 4],
                               [0, 8, 6, 7, 0, 0, 0, 3, 0]])  # https://www.youtube.com/watch?v=Mh8-MICdO6s&ab_channel=LearnSomething - minute 7:21
 
-    example_board4 = np.array([[0, 0, 3, 8, 0, 0, 5, 1, 0],
+    example_board = np.array([[0, 0, 3, 8, 0, 0, 5, 1, 0],
                                [0, 0, 8, 7, 0, 0, 9, 3, 0],
                                [1, 0, 0, 3, 0, 5, 7, 2, 8],
                                [0, 0, 0, 2, 0, 0, 8, 4, 9],
@@ -1104,6 +1282,6 @@ if __name__ == "__main__":
             print("Next step found. current board:")
             cli_print_board(example_board_inst, print_cell_notation=True)
 
-    if not np.any(example_board == 0):
+    if not np.any(example_board_inst.board == 0):
         print("Board solved successfully")
 
