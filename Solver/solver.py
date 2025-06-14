@@ -21,7 +21,6 @@ from enum import Enum
 from itertools import combinations
 from collections import Counter
 import numpy as np
-from tensorflow.python.ops.nn_impl import relu_layer
 
 
 class SudokuTechnique(Enum):
@@ -34,7 +33,9 @@ class SudokuTechnique(Enum):
     NAKED_TRIPLE = 7,
     METADATA_FROM_CELL_NOTATION = 8,
     CELL_NOTATION_FROM_METADATA = 9,
-    SKYSCRAPER = 10
+    SKYSCRAPER = 10,
+    TWO_STRING_KITE = 11,
+    EMPTY_RECTANGLE = 12
 
 def update_cell_notation(cell_notation, row, col, digit):
     """
@@ -769,6 +770,180 @@ def technique_skyscraper(board_inst: Board) -> bool:
 
     return False
 
+def technique_two_string_kite(board_inst: Board) -> bool:
+    for digit in range(1, 10):
+        for kite_row in range(9):
+            for kite_col in range(9):
+                if sum(row_cell_notation.count(digit) for row_cell_notation in board_inst.cell_notation[kite_row]) == 2 and \
+                    sum(col_cell_notation.count(digit) for col_cell_notation in
+                            [board_inst.cell_notation[roww][kite_col] for roww in range(9)]) == 2:
+                    if digit in board_inst.cell_notation[kite_row][kite_col]:
+                        continue # The string kite must not have an intersection of strings.
+                    kite_horizontal_digit_positions = [col for col, optional_digits in enumerate(board_inst.cell_notation[kite_row]) if digit in optional_digits]
+                    kite_vertical_digit_positions = [row for row, optional_digits in
+                                          enumerate([board_inst.cell_notation[roww][kite_col] for roww in range(9)])
+                                          if digit in optional_digits]
+
+                    end_of_kite_col = 0
+                    if not ((kite_col // 3 == kite_horizontal_digit_positions[0] // 3) or (kite_col // 3 == kite_horizontal_digit_positions[1] // 3)):
+                        continue # Not a kite
+                    elif kite_col // 3 == kite_horizontal_digit_positions[0] // 3:
+                        end_of_kite_col = kite_horizontal_digit_positions[1]
+                    else:
+                        end_of_kite_col = kite_horizontal_digit_positions[0]
+
+                    end_of_kite_row = 0
+                    if not (kite_row // 3 == kite_vertical_digit_positions[0] // 3 or kite_row // 3 == kite_vertical_digit_positions[1] // 3):
+                        continue  # Not a kite
+                    elif kite_row // 3 == kite_vertical_digit_positions[0] // 3:
+                        end_of_kite_row = kite_vertical_digit_positions[1]
+                    else:
+                        end_of_kite_row = kite_vertical_digit_positions[0]
+
+                    if digit in board_inst.cell_notation[end_of_kite_row][end_of_kite_col]:
+                        board_inst.cell_notation[end_of_kite_row][end_of_kite_col].remove(digit)
+                        board_inst.last_used_technique = SudokuTechnique.TWO_STRING_KITE
+                        board_inst.last_step_description_str = (f"A kite can be created for the digit {digit} from the positions:"
+                                                                f" ({kite_row},{kite_horizontal_digit_positions[0]}) -"
+                                                                f" ({kite_row},{kite_horizontal_digit_positions[1]}) -"
+                                                                f" ({kite_vertical_digit_positions[0]},{kite_col}) -"
+                                                                f" ({kite_vertical_digit_positions[1]},{kite_col})")
+                        return True
+    return False
+
+def technique_empty_rectangle_continuation(board_inst: Board, digit, stair_row, stair_col) -> bool:
+    for row in range(9):
+        if row // 3 == stair_row // 3:
+            continue
+        if digit not in board_inst.cell_notation[row][stair_col]:
+            continue
+        if sum(cell_notation.count(digit) for cell_notation in
+                [board_inst.cell_notation[row][c]
+                 for c in range(9)]) != 2:
+            continue
+        digit_occurrences_in_row = [r for r, digits in enumerate(board_inst.cell_notation[row]) if digit in digits]
+        digit_occurrences_in_row.remove(stair_col)
+
+        if digit_occurrences_in_row[0] // 3 == stair_col // 3: # It shall not create a proper empty rectangle technique
+            continue
+
+        if digit in board_inst.cell_notation[stair_row][digit_occurrences_in_row[0]]:
+            board_inst.cell_notation[stair_row][digit_occurrences_in_row[0]].remove(digit)
+            board_inst.last_used_technique = SudokuTechnique.EMPTY_RECTANGLE
+            board_inst.last_step_description_str = (f"An empty rectangle was found for the digit {digit}"
+                                                    f" in the block: ({stair_row // 3 + 1},{stair_col // 3 + 1}))."
+                                                    f" Along with only 2 options for {digit} in row {row + 1}, therefore"
+                                                    f"we can eliminate the {digit} in "
+                                                    f"position ({stair_row},{digit_occurrences_in_row[0]})")
+            return True
+
+    for col in range(9):
+        if col // 3 == stair_col // 3:
+            continue
+        if digit not in board_inst.cell_notation[stair_row][col]:
+            continue
+        if sum(cell_notation.count(digit) for cell_notation in
+               [board_inst.cell_notation[r][col]
+                for r in range(9)]) != 2:
+            continue
+        digit_occurrences_in_col = [c for c, digits in enumerate([board_inst.cell_notation[r][col] for r in range(9)]) if digit in digits]
+        digit_occurrences_in_col.remove(stair_row)
+
+        if digit_occurrences_in_col[0] // 3 == stair_row // 3: # It shall not create a proper empty rectangle technique
+            continue
+
+        if digit in board_inst.cell_notation[digit_occurrences_in_col[0]][stair_col]:
+            board_inst.cell_notation[digit_occurrences_in_col[0]][stair_col].remove(digit)
+            board_inst.last_used_technique = SudokuTechnique.EMPTY_RECTANGLE
+            board_inst.last_step_description_str = (f"An empty rectangle was found for the digit {digit}"
+                                                    f" in the block: ({stair_row // 3 + 1},{stair_col // 3 + 1}))."
+                                                    f" Along with only 2 options for {digit} in col {col + 1}, therefore"
+                                                    f"we can eliminate the {digit} in "
+                                                    f"position ({digit_occurrences_in_col[0]},{stair_col})")
+            return True
+
+    return False
+
+def technique_empty_rectangle(board_inst: Board) -> bool:
+    for digit in range(1, 10):
+        for block_row in range(3):
+            for block_col in range(3):
+                # First attempt: Look for a stair where the horizontal line holds more than 2 occurrences.
+                stair_row = -1
+                stair_col = -1
+                is_empty_rectangle = True
+                for row in range(3 * block_row, 3 * block_row + 3):
+                    digit_occurrences_in_block_in_row = sum(cell_notation.count(digit) for cell_notation in
+                                                            [board_inst.cell_notation[row][c]
+                                                             for c in range(3 * block_col, 3 * block_col + 3)])
+                    if digit_occurrences_in_block_in_row > 1:
+                        if stair_row == -1:
+                            stair_row = row
+                        else:
+                            is_empty_rectangle = False
+                    elif digit_occurrences_in_block_in_row == 1:
+                        occurrence_index_in_row = (next((i for i, digits in enumerate([board_inst.cell_notation[row][c]
+                                                for c in range(3 * block_col, 3 * block_col + 3)])
+                                                       if digit in digits), -1)) + 3 * block_col
+                        if stair_col == -1:
+                            stair_col = occurrence_index_in_row
+                        elif stair_col != occurrence_index_in_row:
+                            is_empty_rectangle = False
+
+                if is_empty_rectangle and stair_row != -1 and stair_col != -1:
+                    if technique_empty_rectangle_continuation(board_inst, digit, stair_row, stair_col):
+                        return True
+
+                # Second attempt: Look for a stair where the vertical line holds more than 2 occurences
+                stair_row = -1
+                stair_col = -1
+                is_empty_rectangle = True
+                for col in range(3 * block_col, 3 * block_col + 3):
+                    digit_occurrences_in_block_in_col = sum(cell_notation.count(digit) for cell_notation in
+                                                            [board_inst.cell_notation[r][col]
+                                                             for r in range(3 * block_row, 3 * block_row + 3)])
+                    if digit_occurrences_in_block_in_col > 1:
+                        if stair_col == -1:
+                            stair_col = col
+                        else:
+                            is_empty_rectangle = False
+                    elif digit_occurrences_in_block_in_col == 1:
+                        occurrence_index_in_col = (next((i for i, digits in enumerate([board_inst.cell_notation[r][col]
+                                                   for r in range(3 * block_row, 3 * block_row + 3)])
+                                                     if digit in digits), -1))+ 3 * block_row
+                        if stair_row == -1:
+                            stair_row = occurrence_index_in_col
+                        elif stair_row != occurrence_index_in_col:
+                            is_empty_rectangle = False
+
+                if is_empty_rectangle and stair_row != -1 and stair_col != -1:
+                    if technique_empty_rectangle_continuation(board_inst, digit, stair_row, stair_col):
+                        return True
+
+                # Third attempt - handle special case of digit which can only be in two places in a block and not in the same row or column.
+                digit_occurrences_in_block_count = sum(cell_notation.count(digit) for cell_notation in
+                                                [board_inst.cell_notation[r][c]
+                                                for c in range(3 * block_col, 3 * block_col + 3)
+                                                 for r in range(3 * block_row, 3 * block_row + 3)])
+
+                if digit_occurrences_in_block_count == 2:
+                    digit_occurrences_in_block = [(i, j) for i in range(3 * block_row, 3 * block_row + 3)
+                                                           for j in range(3 * block_col, 3 * block_col + 3) if
+                                                  digit in board_inst.cell_notation[i][j]]
+                    # If they are on the same line or column we cannot create a stair
+                    if digit_occurrences_in_block[0][0] == digit_occurrences_in_block[1][0] or \
+                        digit_occurrences_in_block[0][1] == digit_occurrences_in_block[1][1]:
+                        continue
+
+                    if technique_empty_rectangle_continuation(board_inst, digit, digit_occurrences_in_block[0][0], digit_occurrences_in_block[1][1]):
+                        return True
+
+                    if technique_empty_rectangle_continuation(board_inst, digit, digit_occurrences_in_block[1][0], digit_occurrences_in_block[0][1]):
+                        return True
+
+    return False
+
+
 def next_step_sudoku_human_solver(board_inst: Board) -> bool:
     technique_naked_single_row_or_column_success = technique_naked_single_row_or_column(board_inst)
     if technique_naked_single_row_or_column_success:
@@ -808,6 +983,14 @@ def next_step_sudoku_human_solver(board_inst: Board) -> bool:
 
     technique_skyscraper_success = technique_skyscraper(board_inst)
     if technique_skyscraper_success:
+        return True
+
+    technique_two_string_kite_success = technique_two_string_kite(board_inst)
+    if technique_two_string_kite_success:
+        return True
+
+    technique_empty_rectangle_success = technique_empty_rectangle(board_inst)
+    if technique_empty_rectangle_success:
         return True
 
     return False
