@@ -19,7 +19,10 @@ This process continues until the entire board is filled with valid numbers, or i
 from datetime import datetime
 from enum import Enum
 from itertools import combinations
+from collections import Counter
 import numpy as np
+from tensorflow.python.ops.nn_impl import relu_layer
+
 
 class SudokuTechnique(Enum):
     NAKED_SINGLE_ROW_OR_COLUMN = 1,
@@ -29,8 +32,9 @@ class SudokuTechnique(Enum):
     COLUMN_LINE_INTERACTION = 5,
     NAKED_SINGLE = 6,
     NAKED_TRIPLE = 7,
-    METADATA_FROM_CELL_NOTATION = 8
-    CELL_NOTATION_FROM_METADATA = 9
+    METADATA_FROM_CELL_NOTATION = 8,
+    CELL_NOTATION_FROM_METADATA = 9,
+    SKYSCRAPER = 10
 
 def update_cell_notation(cell_notation, row, col, digit):
     """
@@ -439,7 +443,7 @@ def technique_column_line_interaction(board_inst: Board) -> bool:
             if board_inst.board[row][col] == 0:
                 optional_numbers_for_slot = get_missing_numbers_in_row(board_inst.board, row)
                 optional_numbers_for_slot_copy = optional_numbers_for_slot.copy()
-                for missing_number in optional_numbers_for_slot:
+                for missing_number in optional_numbers_for_slot_copy:
                     if np.any(board_inst.board[:, col] == missing_number):
                         optional_numbers_for_slot.remove(missing_number)
                 if len(optional_numbers_for_slot) == 1:
@@ -457,7 +461,7 @@ def technique_column_line_interaction(board_inst: Board) -> bool:
             if board_inst.board[row][col] == 0:
                 optional_numbers_for_slot = get_missing_numbers_in_col(board_inst.board, col)
                 optional_numbers_for_slot_copy = optional_numbers_for_slot.copy()
-                for missing_number in optional_numbers_for_slot:
+                for missing_number in optional_numbers_for_slot_copy:
                     if np.any(board_inst.board[row, :] == missing_number):
                         optional_numbers_for_slot.remove(missing_number)
                 if len(optional_numbers_for_slot) == 1:
@@ -636,6 +640,135 @@ def technique_update_cell_notation_from_metadata(board_inst: Board) -> bool:
             metadata.append(1) # I.E it already updated the cell notation
     return False
 
+def remove_uninflicted_positions(row, col, l = None):
+    """
+    Given a list of positions in the grid l, positions which are not directly influenced by
+    :param row1:
+    :param col1:
+    :param l:
+    :return:
+    """
+    if l is None:
+        l = [(i, j) for i in range(9) for j in range(9)]
+    if (row, col) in l:
+        l.remove((row, col))
+    l_copy = l.copy()
+    for r,c in l_copy:
+        if r != row and \
+            c != col and \
+            not(r // 3 == row // 3 and c // 3 == col // 3):
+            l.remove((r,c))
+    return l
+
+def technique_skyscraper(board_inst: Board) -> bool:
+    for digit in range(1, 10):
+        for row1 in range(9):
+            for row2 in range(row1 + 1, 9):
+                if sum(row_cell_notation.count(digit) for row_cell_notation in board_inst.cell_notation[row1]) == 2 and \
+                   sum(row_cell_notation.count(digit) for row_cell_notation in board_inst.cell_notation[row2]) == 2:
+                    row1_col_positions = [col for col, optional_digits in enumerate(board_inst.cell_notation[row1]) if digit in optional_digits]
+                    row2_col_positions = [col for col, optional_digits in enumerate(board_inst.cell_notation[row2]) if digit in optional_digits]
+                    same_col = 0
+                    different_col1 = 0
+                    different_col2 = 0
+                    if min(row1_col_positions) == min(row2_col_positions):
+                        same_col = min(row1_col_positions)
+                        different_col1 = max(row1_col_positions)
+                        different_col2 = max(row2_col_positions)
+                        if max(row1_col_positions) == max(row2_col_positions): # This is an x - wing. not the technique we need to implement in this function.
+                            continue
+                    elif max(row1_col_positions) == max(row2_col_positions):
+                        same_col = max(row1_col_positions)
+                        different_col1 = min(row1_col_positions)
+                        different_col2 = min(row2_col_positions)
+                        if min(row1_col_positions) == min(row2_col_positions): # This is an x-wing. not the technique we need to implement in this function.
+                            continue
+                    else:
+                        continue
+
+                    changed_anything = False
+                    removed_digit_from_positions = []
+
+                    # Remove the possible digit from the inflicted upon by the other two unperpendicular points
+                    mutual_inflicted_positions = remove_uninflicted_positions(row2, different_col2, remove_uninflicted_positions(row1, different_col1))
+                    # Verify it is not a small skyscraper
+                    if (row1, same_col) in mutual_inflicted_positions:
+                        mutual_inflicted_positions.remove((row1, same_col))
+                    if (row2, same_col) in mutual_inflicted_positions:
+                        mutual_inflicted_positions.remove((row2, same_col))
+                    for mutual_inflicted_position in mutual_inflicted_positions:
+                        if digit in board_inst.cell_notation[mutual_inflicted_position[0]][mutual_inflicted_position[1]]:
+                            board_inst.cell_notation[mutual_inflicted_position[0]][mutual_inflicted_position[1]].remove(digit)
+                            removed_digit_from_positions.append(mutual_inflicted_position)
+                            changed_anything = True
+
+                    if changed_anything:
+                        board_inst.last_used_technique = SudokuTechnique.SKYSCRAPER
+                        board_inst.last_step_description_str = (f"A skyscraper of the digit {digit} was found build from the positions:"
+                                                                f" ({row1},{same_col}) - ({row1},{different_col1}) - ({row2},{same_col}) - ({row2},{different_col2}).\n"
+                                                                f"Removing {digit} from being possible in positions: {removed_digit_from_positions}")
+                        return True
+
+    # Vertical skyscraper
+        for col1 in range(9):
+            for col2 in range(col1 + 1, 9):
+                if sum(col_cell_notation.count(digit) for col_cell_notation in
+                       [board_inst.cell_notation[roww][col1] for roww in range(9)]) == 2 and \
+                        sum(col_cell_notation.count(digit) for col_cell_notation in
+                            [board_inst.cell_notation[roww][col2] for roww in range(9)]) == 2:
+                    col1_row_positions = [row for row, optional_digits in enumerate([board_inst.cell_notation[roww][col1] for roww in range(9)])
+                                          if digit in optional_digits]
+                    col2_row_positions = [row for row, optional_digits in enumerate([board_inst.cell_notation[roww][col2] for roww in range(9)])
+                                          if digit in optional_digits]
+                    same_row = 0
+                    different_row1 = 0
+                    different_row2 = 0
+                    if min(col1_row_positions) == min(col2_row_positions):
+                        same_row = min(col1_row_positions)
+                        different_row1 = max(col1_row_positions)
+                        different_row2 = max(col2_row_positions)
+                        if max(col1_row_positions) == max(
+                                col2_row_positions):  # This is an x - wing. not the technique we need to implement in this function.
+                            continue
+                    elif max(col1_row_positions) == max(col2_row_positions):
+                        same_row = max(col1_row_positions)
+                        different_row1 = min(col1_row_positions)
+                        different_row2 = min(col2_row_positions)
+                        if min(col1_row_positions) == min(
+                                col2_row_positions):  # This is an x-wing. not the technique we need to implement in this function.
+                            continue
+                    else:
+                        continue
+
+                    changed_anything = False
+                    removed_digit_from_positions = []
+
+                    # Remove the possible digit from the inflicted upon by the other two unperpendicular points
+                    mutual_inflicted_positions = remove_uninflicted_positions(different_row2, col2,
+                                                                              remove_uninflicted_positions(different_row1, col1))
+                    # Verify it is not a small skyscraper
+                    if (same_row, col1) in mutual_inflicted_positions:
+                        mutual_inflicted_positions.remove((same_col, col1))
+                    if (same_row, col2) in mutual_inflicted_positions:
+                        mutual_inflicted_positions.remove((same_col, col2))
+                    for mutual_inflicted_position in mutual_inflicted_positions:
+                        if digit in board_inst.cell_notation[mutual_inflicted_position[0]][
+                            mutual_inflicted_position[1]]:
+                            board_inst.cell_notation[mutual_inflicted_position[0]][
+                                mutual_inflicted_position[1]].remove(digit)
+                            removed_digit_from_positions.append(mutual_inflicted_position)
+                            changed_anything = True
+
+                    if changed_anything:
+                        board_inst.last_used_technique = SudokuTechnique.SKYSCRAPER
+                        board_inst.last_step_description_str = (
+                            f"A skyscraper of the digit {digit} was found build from the positions:"
+                            f" ({same_row},{col1}) - ({different_row1},{col1}) - ({same_row},{col2}) - ({different_row2},{col2}).\n"
+                            f"Removing {digit} from being possible in positions: {removed_digit_from_positions}")
+                        return True
+
+    return False
+
 def next_step_sudoku_human_solver(board_inst: Board) -> bool:
     technique_naked_single_row_or_column_success = technique_naked_single_row_or_column(board_inst)
     if technique_naked_single_row_or_column_success:
@@ -671,6 +804,10 @@ def next_step_sudoku_human_solver(board_inst: Board) -> bool:
 
     technique_update_cell_notation_from_metadata_success = technique_update_cell_notation_from_metadata(board_inst)
     if technique_update_cell_notation_from_metadata_success:
+        return True
+
+    technique_skyscraper_success = technique_skyscraper(board_inst)
+    if technique_skyscraper_success:
         return True
 
     return False
@@ -782,7 +919,7 @@ if __name__ == "__main__":
             break
         else:
             print("Next step found. current board:")
-            cli_print_board(example_board_inst)
+            cli_print_board(example_board_inst, print_cell_notation=True)
 
     if not np.any(example_board == 0):
         print("Board solved successfully")
