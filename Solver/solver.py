@@ -28,7 +28,9 @@ class SudokuTechnique(Enum):
     METADATA_BOX_LINE_INTERACTION = 4,
     COLUMN_LINE_INTERACTION = 5,
     NAKED_SINGLE = 6,
-    NAKED_TRIPLE = 7
+    NAKED_TRIPLE = 7,
+    METADATA_FROM_CELL_NOTATION = 8
+    CELL_NOTATION_FROM_METADATA = 9
 
 def update_cell_notation(cell_notation, row, col, digit):
     """
@@ -207,7 +209,7 @@ def technique_naked_single_row_or_column(board_inst: Board) -> bool:
             safe_replace(board_inst,
                          missing_numbers_in_row[0],
                          row = row,
-                         col = np.where(board_inst.board[row] == 0)[0])
+                         col = np.where(board_inst.board[row] == 0)[0][0])
             board_inst.last_step_description_str = f"In row {row + 1} there is only one missing digit: {missing_numbers_in_row[0]}"
             board_inst.last_used_technique = SudokuTechnique.NAKED_SINGLE_ROW_OR_COLUMN
             return True
@@ -277,7 +279,7 @@ def technique_box_line_interaction(board_inst: Board) -> bool:
                         optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
 
                 if optional_relative_places_for_digit.shape == (1,2):
-                    safe_replace(board_inst.board,
+                    safe_replace(board_inst,
                                  digit,
                                  row = 3 * block_row + optional_relative_places_for_digit[0][0],
                                  col = 3 * block_col + optional_relative_places_for_digit[0][1])
@@ -293,6 +295,8 @@ def technique_box_line_interaction(board_inst: Board) -> bool:
     for digit in range(1, 10):
         for block_row in range(3):
             for block_col in range(3):
+
+
                 if is_digit_in_block(board_inst.board, digit, block_row, block_col):
                     continue
                 optional_relative_places_for_digit = np.array([[0, 0], [0, 1], [0, 2],
@@ -310,16 +314,18 @@ def technique_box_line_interaction(board_inst: Board) -> bool:
                         if metadata[1] == digit:
                             if metadata[0] == MetaDataType.LINE_OF_DIGIT and \
                                 metadata[2] == block_row and \
-                                metadata[4] == optional_relative_place[0]:
+                                metadata[4] == optional_relative_place[0] and \
+                                metadata[3] != block_col:
                                 optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
 
                             if metadata[0] == MetaDataType.COL_OF_DIGIT and \
                                 metadata[3] == block_col and \
-                                metadata[4] == optional_relative_place[1]:
+                                metadata[4] == optional_relative_place[1] and \
+                                metadata[2] != block_row:
                                 optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit, optional_relative_place)
 
                 if optional_relative_places_for_digit.shape == (1,2):
-                    safe_replace(board_inst.board,
+                    safe_replace(board_inst,
                                  digit,
                                  row = 3 * block_row + optional_relative_places_for_digit[0][0],
                                  col = 3 * block_col + optional_relative_places_for_digit[0][1])
@@ -329,6 +335,10 @@ def technique_box_line_interaction(board_inst: Board) -> bool:
                                                  f"and in column"
                                                  f" {3 * block_col + optional_relative_places_for_digit[0][1] + 1} ")
                     board_inst.last_used_technique = SudokuTechnique.BOX_LINE_INTERACTION
+
+                    if block_col == 1 and block_row == 0 and digit == 8:
+                        print("ob ho")
+
                     return True
 
     return False
@@ -368,6 +378,7 @@ def technique_metadata_box_line_interaction(board_inst: Board) -> bool:
                     continue # Another technique should find it
 
                 is_same_optional_line_for_digit = True
+
                 optional_relative_line_for_digit = optional_relative_places_for_digit[0][0]
                 for optional_relative_place in optional_relative_places_for_digit:
                     if optional_relative_place[0] != optional_relative_line_for_digit:
@@ -539,8 +550,90 @@ def technique_metadata_from_cell_notation(board_inst: Board) -> bool:
     for digit in range(1,10):
         for block_row in range(3):
             for block_col in range(3):
-                pass
+                if is_digit_in_block(board_inst.board, digit, block_row, block_col):
+                    continue
+                optional_relative_places_for_digit = np.array([[0, 0], [0, 1], [0, 2],
+                                                               [1, 0], [1, 1], [1, 2],
+                                                               [2, 0], [2, 1], [2, 2]])
 
+                for optional_relative_place in optional_relative_places_for_digit:
+                    if board_inst.board[3 * block_row + optional_relative_place[0]][
+                        3 * block_col + optional_relative_place[1]] != 0:
+                        optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit,
+                                                                                optional_relative_place)
+                        continue
+                    if digit not in board_inst.cell_notation[3 * block_row + optional_relative_place[0]][3 * block_col + optional_relative_place[1]]:
+                        optional_relative_places_for_digit = remove_first_match(optional_relative_places_for_digit,
+                                                                                optional_relative_place)
+                        continue
+
+                if optional_relative_places_for_digit.shape == (1, 2):
+                    continue  # Another technique should find it
+
+                is_same_optional_line_for_digit = True
+                optional_relative_line_for_digit = optional_relative_places_for_digit[0][0]
+                for optional_relative_place in optional_relative_places_for_digit:
+                    if optional_relative_place[0] != optional_relative_line_for_digit:
+                        is_same_optional_line_for_digit = False
+                if is_same_optional_line_for_digit:
+                    new_metadata = [MetaDataType.LINE_OF_DIGIT, digit, block_row, block_col,
+                                    optional_relative_line_for_digit]
+
+                    if new_metadata not in board_inst.metadata_on_board:
+                        board_inst.metadata_on_board.append(new_metadata)
+                        board_inst.last_step_description_str = (
+                            f"New metadata. The digit {digit} in block ({block_row + 1},{block_col + 1}) can only "
+                            f"be placed in line"
+                            f" {3 * block_row + optional_relative_line_for_digit + 1} based on the current"
+                            f" cell notation view.")
+                        board_inst.last_used_technique = SudokuTechnique.METADATA_FROM_CELL_NOTATION
+                        return True
+
+                is_same_optional_col_for_digit = True
+                optional_relative_col_for_digit = optional_relative_places_for_digit[0][1]
+                for optional_relative_place in optional_relative_places_for_digit:
+                    if optional_relative_place[1] != optional_relative_col_for_digit:
+                        is_same_optional_col_for_digit = False
+                if is_same_optional_col_for_digit:
+                    new_metadata = [MetaDataType.COL_OF_DIGIT, digit, block_row, block_col,
+                                    optional_relative_col_for_digit]
+                    if new_metadata not in board_inst.metadata_on_board:
+                        board_inst.metadata_on_board.append(new_metadata)
+                        board_inst.last_step_description_str = (
+                            f"New metadata. The digit {digit} in block ({block_row + 1},{block_col + 1}) can only "
+                            f"be placed in column"
+                            f" {3 * block_col + optional_relative_col_for_digit + 1} based on the current"
+                            f" cell notation view.")
+                        board_inst.last_used_technique = SudokuTechnique.METADATA_FROM_CELL_NOTATION
+                        return True
+
+    return False
+
+def technique_update_cell_notation_from_metadata(board_inst: Board) -> bool:
+    for metadata in board_inst.metadata_on_board:
+        if len(metadata) == 5: # i.e it did not update the cell notation yet.
+            updated_something = False
+            for cell_idx in range(9):
+                if metadata[0] == MetaDataType.LINE_OF_DIGIT and \
+                    metadata[1] in board_inst.cell_notation[3 * metadata[2] + metadata[4]][cell_idx] and \
+                    cell_idx // 3 != metadata[3]:
+                    board_inst.cell_notation[3 * metadata[2] + metadata[4]][cell_idx].remove(metadata[1])
+                    board_inst.last_step_description_str = (f"Updated cell notation based on metadata that digit {metadata[1]} must be"
+                                                            f" placed in line {3 * metadata[2] + metadata[4]}")
+                    board_inst.last_used_technique = SudokuTechnique.CELL_NOTATION_FROM_METADATA
+                    updated_something = True
+                if metadata[0] == MetaDataType.COL_OF_DIGIT and \
+                    metadata[1] in board_inst.cell_notation[cell_idx][3 * metadata[3] + metadata[4]] and \
+                    cell_idx // 3 != metadata[2]:
+                    board_inst.cell_notation[cell_idx][3 * metadata[3] + metadata[4]].remove(metadata[1])
+                    board_inst.last_step_description_str = (
+                        f"Updated cell notation based on metadata that digit {metadata[1]} must be"
+                        f" placed in column {3 * metadata[3] + metadata[4]}")
+                    board_inst.last_used_technique = SudokuTechnique.CELL_NOTATION_FROM_METADATA
+                    updated_something = True
+            if updated_something:
+                return True
+            metadata.append(1) # I.E it already updated the cell notation
     return False
 
 def next_step_sudoku_human_solver(board_inst: Board) -> bool:
@@ -570,6 +663,14 @@ def next_step_sudoku_human_solver(board_inst: Board) -> bool:
 
     technique_naked_triple_success = technique_naked_triple(board_inst)
     if technique_naked_triple_success:
+        return True
+
+    technique_metadata_from_cell_notation_success = technique_metadata_from_cell_notation(board_inst)
+    if technique_metadata_from_cell_notation_success:
+        return True
+
+    technique_update_cell_notation_from_metadata_success = technique_update_cell_notation_from_metadata(board_inst)
+    if technique_update_cell_notation_from_metadata_success:
         return True
 
     return False
