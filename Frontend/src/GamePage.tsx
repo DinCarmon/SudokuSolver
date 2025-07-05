@@ -20,6 +20,7 @@ function GamePage() {
   let cellStatus;
   const [currentCellStatus, setCurrentCellStatus] = useState<Record<string, "ok" | "error">>();
   const [showNotations, setShowNotations] = useState(false);
+  const [cellNotation, setCellNotation] = useState();
 
   const boardString = currentBoard ? currentBoard.map(row => row.join(' ')).join('\n') : 'No board data';
 
@@ -28,19 +29,19 @@ function GamePage() {
   //console.log("Wrapped image string:", wrappedImage?.slice(0, 100));
 
   useEffect(() => {
-    console.log("location state: ", location.state);
-    console.log("window.history.state: ", window.history.state);
+    //console.log("location state: ", location.state);
+    //console.log("window.history.state: ", window.history.state);
 
     const savedBoard = sessionStorage.getItem('board-data');
     
     if (savedBoard) {
       const {board} = JSON.parse(savedBoard);
       setCurrentBoard(board);
-      console.log("saved board: ", board);
+      //console.log("saved board: ", board);
     }
     else {
       board = location.state?.board;
-      console.log("board: ", board);
+      //console.log("board: ", board);
       setCurrentBoard(board);
     }
 
@@ -48,17 +49,17 @@ function GamePage() {
     if (savedCellData) {
       const {cellStatus} = JSON.parse(savedCellData);
       setCurrentCellStatus(cellStatus)
-      console.log("saved cell status: ", cellStatus);
+      //console.log("saved cell status: ", cellStatus);
     }
     else {
       cellStatus = {};
-      console.log("resetting cell status");
+      //console.log("resetting cell status");
       setCurrentCellStatus(cellStatus);
     }
   }, []);
 
   useEffect(() => {
-    console.log("updating saved board: ", currentBoard);
+    //console.log("updating saved board: ", currentBoard);
     if (currentBoard) {
       sessionStorage.setItem('board-data', JSON.stringify({
         board: currentBoard,
@@ -67,9 +68,9 @@ function GamePage() {
   }, [currentBoard]); // run every time these change
 
   useEffect(() => {
-    console.log("updating saved cell status: ", currentCellStatus);
+    //console.log("updating saved cell status: ", currentCellStatus);
     if (currentCellStatus) {
-      console.log("Updating cell statussssssss");
+      //console.log("Updating cell statussssssss");
       sessionStorage.setItem('cell-data', JSON.stringify({
         cellStatus: currentCellStatus,
       }));
@@ -162,6 +163,21 @@ function GamePage() {
                                 ...prev,
                                 [`${rowIndex}-${colIndex}`]: "ok",
                               }));
+                              const response_update_cell_notation = await fetch('http://localhost:8000/update-cell-notation', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                                credentials: 'include',
+                                body: JSON.stringify({
+                                  row: rowIndex,
+                                  col: colIndex,
+                                  digit: val,
+                                }),
+                              });
+                              const data_update_cell_notation = await response_update_cell_notation.json();
+                              setCellNotation(data_update_cell_notation.cell_notation);
+                              console.log("cell notation: ", cellNotation);
                             }
                           } catch (err) {
                             console.error("Validation error:", err);
@@ -202,8 +218,20 @@ function GamePage() {
                   cursor: 'pointer',
                   transition: 'background-color 0.3s'
                 }}
-                onClick={() => {
+                onClick={async () => {
                   setShowNotations(!showNotations);
+                  const response = await fetch('http://localhost:8000/get-cell-notation', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                  });
+                  const data = await response.json();
+                  console.log("data: ", data);
+
+                  setCellNotation(data.cell_notation);
+                  console.log("cell notation: ", cellNotation);
                 }}
               >
                 <div 

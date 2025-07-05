@@ -43,7 +43,7 @@ class SudokuTechnique(Enum):
     EMPTY_RECTANGLE = 13,
     XY_WING = 14
 
-def update_cell_notation(cell_notation, row, col, digit):
+def update_cell_notation(cell_notation, row : int, col : int, digit : int):
     """
     Update the cells notation as if someone added a digit in (row, col)
     :param cell_notation:
@@ -59,6 +59,7 @@ def update_cell_notation(cell_notation, row, col, digit):
     for c in range(9):
         if digit in cell_notation[row][c]:
             cell_notation[row][c].remove(digit)
+            print(f"Removed {digit} from {row},{c}")
 
     block_row = row // 3
     block_col = col // 3
@@ -89,6 +90,27 @@ class Board:
             for col in range(9):
                 if board[row][col] != 0:
                     update_cell_notation(self.cell_notation, row, col, board[row][col])
+
+    def to_dict(self):
+        return {
+            "board": self.board.copy().tolist(),
+            "cell_notation": self.cell_notation.copy(),
+            "metadata_on_board": self.metadata_on_board.copy(),
+            "last_used_technique": self.last_used_technique,
+            "last_step_description_str": self.last_step_description_str,
+            "original_board": self.original_board.copy().tolist(),
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        board_inst = cls(data["board"])
+        board_inst.board = np.array(data["board"])
+        board_inst.cell_notation = data["cell_notation"]
+        board_inst.metadata_on_board = data["metadata_on_board"]
+        board_inst.last_used_technique = data["last_used_technique"]
+        board_inst.last_step_description_str = data["last_step_description_str"]
+        board_inst.original_board = np.array(data["original_board"])
+        return board_inst
 
 def is_valid(board, row, column, digit):
     """
@@ -204,6 +226,7 @@ def is_digit_in_col(board, digit, col_idx) -> bool:
 def safe_replace(board_inst: Board, digit, row, col):
     if board_inst.board[row][col] != 0:
         raise RuntimeError(f"Attempting to replace a digit")
+
     board_inst.board[row][col] = digit
     update_cell_notation(board_inst.cell_notation, row, col, digit)
 

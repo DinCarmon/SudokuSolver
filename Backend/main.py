@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Body
@@ -10,7 +10,9 @@ from PIL import Image
 import shutil
 from starlette.status import HTTP_400_BAD_REQUEST
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 import cv2
+import json
 
 # Add the parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -19,6 +21,10 @@ from Loader.SudokuImageExtractor.sudoku_extractor import extract_soduko_from_ima
 from Loader.SudokuImageExtractor.sudoku_extractor import get_image_wrap
 
 from Solver.solver import solve_sudoku_automatic
+from Solver.solver import Board
+from Solver.solver import update_cell_notation
+from Solver.solver import cli_print_board
+from Solver.solver import safe_replace
 
 app = FastAPI()
 
@@ -38,8 +44,12 @@ app.add_middleware(
 UPLOAD_FOLDER = './user_uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+
+# Add this line before any routes that use session
+app.add_middleware(SessionMiddleware, secret_key="your-secret-key")
+
 @app.post("/upload-image")
-async def upload_image(image: UploadFile = File(...)):
+async def upload_image(request: Request, image: UploadFile = File(...)):
     if image.content_type not in ["image/jpeg", "image/png"]:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Invalid image type")
 
@@ -61,6 +71,10 @@ async def upload_image(image: UploadFile = File(...)):
     cv2.imwrite(wrapped_filename, img_wrap)
 
     board = extract_soduko_from_image(img)
+
+    board_inst = Board(board)
+    print(board_inst)
+    request.session['board_inst'] = json.dumps(board_inst.to_dict())  
 
     # Read and encode the original image to base64
     with open(file_location, "rb") as img_file:
@@ -94,6 +108,7 @@ async def cors_preflight():
 
 @app.post("/solve-sudoku")
 async def solve_sudoku_route(
+    request: Request,
     payload: dict = Body(...)
 ):
     board = payload.get("board")
@@ -124,3 +139,29 @@ async def solve_sudoku_route(
         "original_image": image,
         "wrapped_image": image_wrap,
     }
+
+@app.post("/update-cell-notation")
+async def update_board(
+    request: Request,
+    payload: dict = Body(...)
+):
+    board_inst = Board.from_dict(json.loads(request.session['board_inst']))
+    row = int(payload.get("row"))
+    col = int(payload.get("col"))
+    digit = int(payload.get("digit"))
+    safe_replace(board_inst, digit, row, col)
+    request.session['board_inst'] = json.dumps(board_inst.to_dict())
+    #cli_print_board(board_inst, print_cell_notation=True)
+    return {
+        "cell_notation": board_inst.cell_notation
+    }
+
+@app.post("/get-cell-notation")
+async def get_cell_notation(
+    request: Request,
+):
+    board_inst = Board.from_dict(json.loads(request.session['board_inst']))
+    return {
+        "cell_notation": board_inst.cell_notation
+    }
+
