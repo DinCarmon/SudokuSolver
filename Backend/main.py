@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Body
 import numpy as np
 import base64
@@ -28,7 +29,7 @@ To fix this in FastAPI, add the CORS middleware to allow requests from your fron
 """
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:8000",],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -86,6 +87,10 @@ async def upload_image(image: UploadFile = File(...)):
         "original_image": data_uri_original_image,
         "wrapped_image": data_uri_wrapped_image
     })
+
+@app.options("/solve-sudoku")
+async def cors_preflight():
+    return {"preflight": "ok"}
 
 @app.post("/solve-sudoku")
 async def solve_sudoku_route(

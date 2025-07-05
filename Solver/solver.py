@@ -150,7 +150,7 @@ def solve_sudoku_automatic(board: np.ndarray) -> bool:
         for r in range(9):
             for c in range(9):
                 if board[r][c] == 0:
-                    options = [n for n in range(1, 10) if is_valid(r, c, n)]
+                    options = [n for n in range(1, 10) if is_valid(board, r, c, n)]
                     if len(options) < min_options:
                         min_options = len(options)
                         target = (r, c, options)

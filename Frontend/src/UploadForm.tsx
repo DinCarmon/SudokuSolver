@@ -23,6 +23,7 @@ function UploadForm() {
       const response = await fetch('http://localhost:8000/upload-image', {
         method: 'POST',
         body: formData,
+        credentials: 'include'
       });
 
       const data = await response.json();
@@ -30,6 +31,8 @@ function UploadForm() {
       if (!response.ok) throw new Error(data.detail || 'Upload failed');
 
       if (data.board && data.original_image) {
+        sessionStorage.removeItem('board-data');
+        sessionStorage.removeItem('cell-data');
         navigate('/gamepage', {
           state: {
             board: data.board,
