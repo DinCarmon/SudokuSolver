@@ -33,6 +33,7 @@ function UploadForm() {
       if (data.board && data.original_image) {
         sessionStorage.removeItem('board-data');
         sessionStorage.removeItem('cell-data');
+        sessionStorage.removeItem('show-notations');
         navigate('/gamepage', {
           state: {
             board: data.board,

@@ -99,7 +99,8 @@ async def upload_image(request: Request, image: UploadFile = File(...)):
         "filename": image.filename,
         "board": board.tolist(),
         "original_image": data_uri_original_image,
-        "wrapped_image": data_uri_wrapped_image
+        "wrapped_image": data_uri_wrapped_image,
+        "cell_notation": board_inst.cell_notation
     })
 
 @app.options("/solve-sudoku")

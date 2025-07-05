@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 function GamePage() {
@@ -10,22 +10,29 @@ function GamePage() {
   }*/
 
   const location = useLocation();
-  let board;
   const originalImage = location.state?.original_image as string | undefined;
   const wrappedImage = location.state?.wrapped_image as string | undefined;
 
+  let board;
   const [currentBoard, setCurrentBoard] = useState(board);
   // Store the history of boards
   const boardHistoryRef = useRef([board]);
+
   let cellStatus;
   const [currentCellStatus, setCurrentCellStatus] = useState<Record<string, "ok" | "error">>();
-  const [showNotations, setShowNotations] = useState(false);
-  const [cellNotation, setCellNotation] = useState();
+
+  let showNotations : boolean;
+  const [currentShowNotations, setCurrentShowNotations] = useState<boolean>(showNotations);
+
+  let cell_notation;
+  const [currentCellNotation, setCurrentCellNotation] = useState<string | undefined>(cell_notation);
+  
+
 
   const boardString = currentBoard ? currentBoard.map(row => row.join(' ')).join('\n') : 'No board data';
 
   //console.log(boardString);
-  //console.log("Original image string:", originalImage?.slice(0, 100));
+  //console.log("Original image string:", origina lImage?.slice(0, 100));
   //console.log("Wrapped image string:", wrappedImage?.slice(0, 100));
 
   useEffect(() => {
@@ -33,7 +40,6 @@ function GamePage() {
     //console.log("window.history.state: ", window.history.state);
 
     const savedBoard = sessionStorage.getItem('board-data');
-    
     if (savedBoard) {
       const {board} = JSON.parse(savedBoard);
       setCurrentBoard(board);
@@ -56,6 +62,25 @@ function GamePage() {
       //console.log("resetting cell status");
       setCurrentCellStatus(cellStatus);
     }
+
+    const savedShowNotations = sessionStorage.getItem('show-notations');
+    if (savedShowNotations) {
+      const {showNotations} = JSON.parse(savedShowNotations);
+      setCurrentShowNotations(showNotations);
+      console.log("saved show notations: ", showNotations);
+    }
+    else {
+      showNotations = false;
+      setCurrentShowNotations(showNotations);
+      console.log("setting show notations to false. no saved show notations in session storage");
+    }
+
+    const savedCellNotation = sessionStorage.getItem('cell-notation');
+    if (savedCellNotation) {
+      const {cellNotation} = JSON.parse(savedCellNotation);
+      setCurrentCellNotation(cellNotation);
+      console.log("saved cell notation: ", cellNotation);
+    }
   }, []);
 
   useEffect(() => {
@@ -77,6 +102,24 @@ function GamePage() {
     }
   }, [currentCellStatus]); // run every time these change
 
+  useEffect(() => {
+    if (currentShowNotations !== undefined) {
+      sessionStorage.setItem('show-notations', JSON.stringify({
+        showNotations: currentShowNotations,
+      }));
+      console.log("updating saved show notations: ", currentShowNotations);
+    }
+  }, [currentShowNotations]); // run every time these change
+
+  useEffect(() => {
+    if (currentCellNotation) {
+      sessionStorage.setItem('cell-notation', JSON.stringify({
+        cellNotation: currentCellNotation,
+      }));
+      console.log("updating saved cell notation: ", currentCellNotation);
+    }
+  }, [currentCellNotation]); // run every time these change
+
   return (
     <div>
       <h2>Sudoku Game</h2>
@@ -95,6 +138,48 @@ function GamePage() {
             {currentBoard?.flatMap((row, rowIndex) =>
               row.map((cell: any, colIndex: number) => {
                 const value = Number(cell);
+                const isEmpty = value === 0;
+                
+                // Parse cell notation if available
+                let cellNotationArray: number[][] = [];
+                try {
+                  if (currentCellNotation) {
+                    // Check if it's already an array
+                    if (Array.isArray(currentCellNotation)) {
+                      cellNotationArray = currentCellNotation;
+                    } else if (typeof currentCellNotation === 'string') {
+                      // Try to parse as JSON, but handle potential issues
+                      const trimmed = currentCellNotation.trim();
+                      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                        cellNotationArray = JSON.parse(trimmed);
+                      } else {
+                        console.log('Cell notation is not a valid JSON array:', trimmed);
+                      }
+                    } else {
+                      console.log('Unexpected cell notation format:', currentCellNotation);
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to parse cell notation:', e);
+                  console.error('Raw value was:', currentCellNotation);
+                  // Don't throw, just continue with empty array
+                }
+                
+                // Get notation for this cell - assuming it's an array of possible numbers
+                const cellNotation: number[] = (() => {
+                  try {
+                    const cellData = cellNotationArray[rowIndex]?.[colIndex];
+                    //console.log("cell data: ", cellData);
+                    if (Array.isArray(cellData)) {
+                      return cellData.filter(num => typeof num === 'number' && num >= 1 && num <= 9);
+                    }
+                    return [];
+                  } catch (e) {
+                    console.error('Error accessing cell notation data:', e);
+                    return [];
+                  }
+                })();
+                
                 return (
                   <div
                     key={`${rowIndex}-${colIndex}`}
@@ -103,7 +188,7 @@ function GamePage() {
                       borderLeft: colIndex % 3 === 0 ? '2px solid black' : '1px solid #333',
                       borderRight: (colIndex + 1) % 3 === 0 ? '2px solid black' : undefined,
                       borderBottom: (rowIndex + 1) % 3 === 0 ? '2px solid black' : undefined,
-                      backgroundColor: value === 0 ? '#f0f0f0' : 'rgba(5,0,0,0)',
+                      backgroundColor: value === 0 ? 'rgba(246, 247, 242, 20)' : 'rgba(236, 4, 4, 0)',
                       display: 'flex',
                       justifyContent: 'center',
                       alignItems: 'center',
@@ -111,12 +196,14 @@ function GamePage() {
                       fontWeight: 'bold',
                       width: '40px',
                       height: '40px',
-                      boxSizing: 'border-box'
+                      boxSizing: 'border-box',
+                      position: 'relative'
                     }}
                   >
                     <input
                       type="text"
                       maxLength={1}
+                      placeholder = {currentShowNotations ? currentCellNotation?.[rowIndex]?.[colIndex] : ''}
                       value={value !== 0 ? value : ''}
                       onChange={async (e) => {
                         const val = e.target.value;
@@ -176,8 +263,8 @@ function GamePage() {
                                 }),
                               });
                               const data_update_cell_notation = await response_update_cell_notation.json();
-                              setCellNotation(data_update_cell_notation.cell_notation);
-                              console.log("cell notation: ", cellNotation);
+                              setCurrentCellNotation(data_update_cell_notation.cell_notation);
+                              console.log("cell notation: ", data_update_cell_notation.cell_notation);
                             }
                           } catch (err) {
                             console.error("Validation error:", err);
@@ -190,15 +277,17 @@ function GamePage() {
                         border: 'none',
                         outline: 'none',
                         textAlign: 'center',
-                        fontSize: '18px',
+                        fontSize: value !== 0 ? '18px' : '10px',
                         fontWeight: 'bold',
                         backgroundColor:
                           currentCellStatus[`${rowIndex}-${colIndex}`] === "error" && value !== 0
                             ? 'red'
                             : value !== 0
                             ? 'green'
-                            : '#f0f0f0',
-                        color: 'white',
+                            : 'white',
+                        color: value === 0 ? 'black' : 'white',
+                        position: 'relative',
+                        zIndex: isEmpty ? 1 : 'auto'
                       }}
                     />
                   </div>
@@ -212,14 +301,14 @@ function GamePage() {
                 style={{
                   width: '40px',
                   height: '20px',
-                  backgroundColor: showNotations ? '#4CAF50' : '#f44336',
+                  backgroundColor: currentShowNotations ? 'green' : 'red',
                   borderRadius: '10px',
                   position: 'relative',
                   cursor: 'pointer',
                   transition: 'background-color 0.3s'
                 }}
                 onClick={async () => {
-                  setShowNotations(!showNotations);
+                  setCurrentShowNotations(!currentShowNotations);
                   const response = await fetch('http://localhost:8000/get-cell-notation', {
                     method: 'POST',
                     headers: {
@@ -228,10 +317,7 @@ function GamePage() {
                     credentials: 'include',
                   });
                   const data = await response.json();
-                  console.log("data: ", data);
-
-                  setCellNotation(data.cell_notation);
-                  console.log("cell notation: ", cellNotation);
+                  setCurrentCellNotation(data.cell_notation);
                 }}
               >
                 <div 
@@ -242,7 +328,7 @@ function GamePage() {
                     borderRadius: '50%',
                     position: 'absolute',
                     top: '2px',
-                    left: showNotations ? '22px' : '2px',
+                    left: currentShowNotations ? '22px' : '2px',
                     transition: 'transform 0.3s'
                   }}
                 />
