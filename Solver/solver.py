@@ -28,20 +28,21 @@ import numpy as np
 
 
 class SudokuTechnique(Enum):
-    NAKED_SINGLE_ROW_OR_COLUMN = 1,
-    NAKED_SINGLE_BLOCK = 2,
-    BOX_LINE_INTERACTION = 3,
-    METADATA_BOX_LINE_INTERACTION = 4,
-    COLUMN_LINE_INTERACTION = 5,
-    NAKED_SINGLE = 6,
+    NAKED_SINGLE_ROW_OR_COLUMN = 1
+    NAKED_SINGLE_BLOCK = 2
+    BOX_LINE_INTERACTION = 3
+    METADATA_BOX_LINE_INTERACTION = 4
+    COLUMN_LINE_INTERACTION = 5
+    NAKED_SINGLE = 6
     NAKED_DOUBLE = 7
-    NAKED_TRIPLE = 8,
-    METADATA_FROM_CELL_NOTATION = 9,
-    CELL_NOTATION_FROM_METADATA = 10,
-    SKYSCRAPER = 11,
-    TWO_STRING_KITE = 12,
-    EMPTY_RECTANGLE = 13,
+    NAKED_TRIPLE = 8
+    METADATA_FROM_CELL_NOTATION = 9
+    CELL_NOTATION_FROM_METADATA = 10
+    SKYSCRAPER = 11
+    TWO_STRING_KITE = 12
+    EMPTY_RECTANGLE = 13
     XY_WING = 14
+    NO_TECHNIQUE = 15
 
 def update_cell_notation(cell_notation, row : int, col : int, digit : int):
     """
@@ -59,7 +60,6 @@ def update_cell_notation(cell_notation, row : int, col : int, digit : int):
     for c in range(9):
         if digit in cell_notation[row][c]:
             cell_notation[row][c].remove(digit)
-            print(f"Removed {digit} from {row},{c}")
 
     block_row = row // 3
     block_col = col // 3
@@ -76,7 +76,7 @@ class Board:
         self.board = board.copy()
         self.original_board = self.board.copy()
         self.metadata_on_board = []
-        self.last_used_technique = None
+        self.last_used_technique = SudokuTechnique.NO_TECHNIQUE
         self.last_step_description_str = ""
 
         self.cell_notation = [[0 for _ in range(9)] for _ in range(9)] # a 9 x 9 grid
@@ -92,22 +92,36 @@ class Board:
                     update_cell_notation(self.cell_notation, row, col, board[row][col])
 
     def to_dict(self):
+        metadata_on_board_copy = self.metadata_to_dict(self.metadata_on_board)
+
         return {
             "board": self.board.copy().tolist(),
             "cell_notation": self.cell_notation.copy(),
-            "metadata_on_board": self.metadata_on_board.copy(),
-            "last_used_technique": self.last_used_technique,
+            "metadata_on_board": metadata_on_board_copy,
+            "last_used_technique": str(self.last_used_technique.value),
             "last_step_description_str": self.last_step_description_str,
             "original_board": self.original_board.copy().tolist(),
         }
+
+    @classmethod
+    def metadata_to_dict(cls, metadata_on_board):
+        metadata_on_board_copy = []
+        for metadata in metadata_on_board:
+            metadata_on_board_copy.append([str(metadata[0].value), str(metadata[1]), str(metadata[2]), str(metadata[3]), str(metadata[4])])
+        return metadata_on_board_copy
 
     @classmethod
     def from_dict(cls, data):
         board_inst = cls(data["board"])
         board_inst.board = np.array(data["board"])
         board_inst.cell_notation = data["cell_notation"]
-        board_inst.metadata_on_board = data["metadata_on_board"]
-        board_inst.last_used_technique = data["last_used_technique"]
+
+        metadata_on_board_copy = []
+        for metadata in data["metadata_on_board"]:
+            metadata_on_board_copy.append([MetaDataType(int(metadata[0])), int(metadata[1]), int(metadata[2]), int(metadata[3]), int(metadata[4])])
+        board_inst.metadata_on_board = metadata_on_board_copy
+        
+        board_inst.last_used_technique = SudokuTechnique(int(data["last_used_technique"]))
         board_inst.last_step_description_str = data["last_step_description_str"]
         board_inst.original_board = np.array(data["original_board"])
         return board_inst
@@ -224,11 +238,25 @@ def is_digit_in_col(board, digit, col_idx) -> bool:
     return False
 
 def safe_replace(board_inst: Board, digit, row, col):
+
+    # Update Board
     if board_inst.board[row][col] != 0:
-        raise RuntimeError(f"Attempting to replace a digit")
+        # raise RuntimeError(f"Attempting to replace a digit")
+        pass
 
     board_inst.board[row][col] = digit
+
+    # Update Cell Notation
     update_cell_notation(board_inst.cell_notation, row, col, digit)
+
+    # Update Metadata
+    metadata_copy = board_inst.metadata_on_board.copy()
+    for metadata in metadata_copy:
+        if metadata[1] == digit:
+            if metadata[2] == row // 3 and metadata[3] == col // 3:
+                if (metadata[0] == MetaDataType.LINE_OF_DIGIT and row % 3 == metadata[4]) or \
+                    (metadata[0] == MetaDataType.COL_OF_DIGIT and col % 3 == metadata[4]):
+                    board_inst.metadata_on_board.remove(metadata)
 
 def technique_naked_single_row_or_column(board_inst: Board) -> bool:
     """
@@ -451,14 +479,16 @@ def get_missing_numbers_in_row(board, row):
     missing_numbers = list(range(1,10))
     for column in range(9):
         if board[row][column] != 0:
-            missing_numbers.remove(board[row][column])
+            if board[row][column] in missing_numbers:
+                missing_numbers.remove(board[row][column])
     return missing_numbers
 
 def get_missing_numbers_in_col(board, col):
     missing_numbers = list(range(1,10))
     for row in range(9):
         if board[row][col] != 0:
-            missing_numbers.remove(board[row][col])
+            if board[row][col] in missing_numbers:
+                missing_numbers.remove(board[row][col])
     return missing_numbers
 
 def technique_column_line_interaction(board_inst: Board) -> bool:
@@ -549,7 +579,7 @@ def technique_naked_double(board_inst: Board) -> bool:
                                     board_inst.cell_notation[3 * block_row + relative_row][3 * block_col + relative_col].remove(digit)
                                     found_new_information = True
                     if found_new_information:
-                        board_inst.last_used_technique = SudokuTechnique.NAKED_TRIPLE
+                        board_inst.last_used_technique = SudokuTechnique.NAKED_DOUBLE
                         board_inst.last_step_description_str = f"In block ({block_row + 1},{block_col + 1}), the digits " \
                                                                 f"{combined} along with relative positions {num_of_cells_with_only_these_double_options}" \
                                                                 f" are a naked double. Therefore we can eliminate those digits from the cell notation" \
@@ -573,7 +603,7 @@ def technique_naked_double(board_inst: Board) -> bool:
                             board_inst.cell_notation[row][col].remove(digit)
                             found_new_information = True
                 if found_new_information:
-                    board_inst.last_used_technique = SudokuTechnique.NAKED_TRIPLE
+                    board_inst.last_used_technique = SudokuTechnique.NAKED_DOUBLE
                     board_inst.last_step_description_str = f"In row {row + 1}, the digits " \
                                                            f"{combined} along with relative positions {num_of_cells_with_only_these_double_options}" \
                                                            f" are a naked double. Therefore we can eliminate those digits from the cell notation" \
@@ -597,7 +627,7 @@ def technique_naked_double(board_inst: Board) -> bool:
                             board_inst.cell_notation[row][col].remove(digit)
                             found_new_information = True
                 if found_new_information:
-                    board_inst.last_used_technique = SudokuTechnique.NAKED_TRIPLE
+                    board_inst.last_used_technique = SudokuTechnique.NAKED_DOUBLE
                     board_inst.last_step_description_str = f"In col {col + 1}, the digits " \
                                                            f"{combined} along with relative positions {num_of_cells_with_only_these_double_options}" \
                                                            f" are a naked double. Therefore we can eliminate those digits from the cell notation" \
@@ -1137,62 +1167,77 @@ def technique_xy_wing(board_inst: Board):
                             return True
     return False
 
-def next_step_sudoku_human_solver(board_inst: Board) -> bool:
-    technique_naked_single_row_or_column_success = technique_naked_single_row_or_column(board_inst)
-    if technique_naked_single_row_or_column_success:
-        return True
+def next_step_sudoku_human_solver(board_inst: Board, techniques_to_use: list[SudokuTechnique]) -> bool:
+    for technique in techniques_to_use:
+        if technique == SudokuTechnique.NAKED_SINGLE_ROW_OR_COLUMN:
+            technique_naked_single_row_or_column_success = technique_naked_single_row_or_column(board_inst)
+            if technique_naked_single_row_or_column_success:
+                return True
 
-    technique_naked_single_block_success = technique_naked_single_block(board_inst)
-    if technique_naked_single_block_success:
-        return True
+        if technique == SudokuTechnique.NAKED_SINGLE_BLOCK:
+            technique_naked_single_block_success = technique_naked_single_block(board_inst)
+            if technique_naked_single_block_success:
+                return True
 
-    technique_box_line_interaction_success = technique_box_line_interaction(board_inst)
-    if technique_box_line_interaction_success:
-        return True
+        if technique == SudokuTechnique.BOX_LINE_INTERACTION:
+            technique_box_line_interaction_success = technique_box_line_interaction(board_inst)
+            if technique_box_line_interaction_success:
+                return True
 
-    technique_metadata_box_line_interaction_success = technique_metadata_box_line_interaction(board_inst)
-    if technique_metadata_box_line_interaction_success:
-        return True
+        if technique == SudokuTechnique.METADATA_BOX_LINE_INTERACTION:
+            technique_metadata_box_line_interaction_success = technique_metadata_box_line_interaction(board_inst)
+            if technique_metadata_box_line_interaction_success:
+                return True
 
-    technique_column_line_interaction_success = technique_column_line_interaction(board_inst)
-    if technique_column_line_interaction_success:
-        return True
+        if technique == SudokuTechnique.COLUMN_LINE_INTERACTION:
+            technique_column_line_interaction_success = technique_column_line_interaction(board_inst)
+            if technique_column_line_interaction_success:
+                return True
+        
+        if technique == SudokuTechnique.NAKED_SINGLE:
+            technique_naked_single_success = technique_naked_single(board_inst)
+            if technique_naked_single_success:
+                return True
 
-    technique_naked_single_success = technique_naked_single(board_inst)
-    if technique_naked_single_success:
-        return True
+        if technique == SudokuTechnique.NAKED_DOUBLE:
+            technique_naked_double_success = technique_naked_double(board_inst)
+            if technique_naked_double_success:
+                return True
 
-    technique_naked_double_success = technique_naked_double(board_inst)
-    if technique_naked_double_success:
-        return True
+        if technique == SudokuTechnique.NAKED_TRIPLE:
+            technique_naked_triple_success = technique_naked_triple(board_inst)
+            if technique_naked_triple_success:
+                return True
 
-    technique_naked_triple_success = technique_naked_triple(board_inst)
-    if technique_naked_triple_success:
-        return True
+        if technique == SudokuTechnique.METADATA_FROM_CELL_NOTATION:
+            technique_metadata_from_cell_notation_success = technique_metadata_from_cell_notation(board_inst)
+            if technique_metadata_from_cell_notation_success:
+                return True
 
-    technique_metadata_from_cell_notation_success = technique_metadata_from_cell_notation(board_inst)
-    if technique_metadata_from_cell_notation_success:
-        return True
+        if technique == SudokuTechnique.CELL_NOTATION_FROM_METADATA:
+            technique_update_cell_notation_from_metadata_success = technique_update_cell_notation_from_metadata(board_inst)
+            if technique_update_cell_notation_from_metadata_success:
+                return True
 
-    technique_update_cell_notation_from_metadata_success = technique_update_cell_notation_from_metadata(board_inst)
-    if technique_update_cell_notation_from_metadata_success:
-        return True
+        if technique == SudokuTechnique.SKYSCRAPER:
+            technique_skyscraper_success = technique_skyscraper(board_inst)
+            if technique_skyscraper_success:
+                return True
 
-    technique_skyscraper_success = technique_skyscraper(board_inst)
-    if technique_skyscraper_success:
-        return True
-
-    technique_two_string_kite_success = technique_two_string_kite(board_inst)
-    if technique_two_string_kite_success:
-        return True
-
-    technique_empty_rectangle_success = technique_empty_rectangle(board_inst)
-    if technique_empty_rectangle_success:
-        return True
-
-    technique_xy_wing_success = technique_xy_wing(board_inst)
-    if technique_xy_wing_success:
-        return True
+        if technique == SudokuTechnique.TWO_STRING_KITE:
+            technique_two_string_kite_success = technique_two_string_kite(board_inst)
+            if technique_two_string_kite_success:
+                return True
+        
+        if technique == SudokuTechnique.EMPTY_RECTANGLE:
+            technique_empty_rectangle_success = technique_empty_rectangle(board_inst)
+            if technique_empty_rectangle_success:
+                return True
+        
+        if technique == SudokuTechnique.XY_WING:
+            technique_xy_wing_success = technique_xy_wing(board_inst)
+            if technique_xy_wing_success:
+                return True
 
     return False
 
@@ -1296,7 +1341,20 @@ if __name__ == "__main__":
 
     # Continue as long as there are zeros in the board. i.e the board is not solved
     while np.any(example_board_inst.board == 0):
-        success = next_step_sudoku_human_solver(example_board_inst)
+        success = next_step_sudoku_human_solver(example_board_inst, [SudokuTechnique.NAKED_SINGLE_ROW_OR_COLUMN,
+                                                                     SudokuTechnique.NAKED_SINGLE_BLOCK,
+                                                                     SudokuTechnique.BOX_LINE_INTERACTION,
+                                                                     SudokuTechnique.METADATA_BOX_LINE_INTERACTION,
+                                                                     SudokuTechnique.COLUMN_LINE_INTERACTION,
+                                                                     SudokuTechnique.NAKED_SINGLE,
+                                                                     SudokuTechnique.NAKED_DOUBLE,
+                                                                     SudokuTechnique.NAKED_TRIPLE,
+                                                                     SudokuTechnique.METADATA_FROM_CELL_NOTATION,
+                                                                     SudokuTechnique.CELL_NOTATION_FROM_METADATA,
+                                                                     SudokuTechnique.SKYSCRAPER,
+                                                                     SudokuTechnique.TWO_STRING_KITE,
+                                                                     SudokuTechnique.EMPTY_RECTANGLE,
+                                                                     SudokuTechnique.XY_WING])
         if not success:
             print("Failed to solve the Sudoku board:")
             cli_print_board(example_board_inst, print_cell_notation=True)

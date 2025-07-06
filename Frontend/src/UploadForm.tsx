@@ -1,10 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 function UploadForm() {
   const [image, setImage] = useState<File | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const navigate = useNavigate();
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+
+    console.log("UploadForm mounted");
+    if (!sessionStorage.getItem('tabId')) {
+      const tabId = crypto.randomUUID();
+      sessionStorage.setItem('tabId', tabId);
+      window.name = tabId;
+    }
+
+    console.log("tabId: ", window.name);
+
+    fetch("http://localhost:8000/api", {
+      credentials: 'include',
+      headers: {
+        "X-Tab-Id": window.name!,
+      },
+    });
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -23,7 +45,10 @@ function UploadForm() {
       const response = await fetch('http://localhost:8000/upload-image', {
         method: 'POST',
         body: formData,
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'X-Tab-Id': window.name!,
+        },
       });
 
       const data = await response.json();

@@ -21,11 +21,20 @@ function GamePage() {
   let cellStatus;
   const [currentCellStatus, setCurrentCellStatus] = useState<Record<string, "ok" | "error">>();
 
-  let showNotations : boolean;
-  const [currentShowNotations, setCurrentShowNotations] = useState<boolean>(showNotations);
+  const [currentShowMetaData, setCurrentShowMetaData] = useState<boolean | undefined>(undefined);
+  const [currentShowNotations, setCurrentShowNotations] = useState<boolean | undefined>(undefined);
+
+  let metadata : number[][];
+  const [currentMetadata, setCurrentMetadata] = useState<number[][]>(metadata);
 
   let cell_notation;
   const [currentCellNotation, setCurrentCellNotation] = useState<string | undefined>(cell_notation);
+  
+  // Track selected techniques
+  const [selectedTechniques, setSelectedTechniques] = useState<Set<number>>(new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]));
+
+  const [lastUsedTechnique, setLastUsedTechnique] = useState<string | undefined>(undefined);
+  const [lastStepDescriptionStr, setLastStepDescriptionStr] = useState<string | undefined>(undefined);
   
 
 
@@ -39,19 +48,19 @@ function GamePage() {
     //console.log("location state: ", location.state);
     //console.log("window.history.state: ", window.history.state);
 
-    const savedBoard = sessionStorage.getItem('board-data');
+    const savedBoard = sessionStorage.getItem(window.name + '-board-data');
     if (savedBoard) {
       const {board} = JSON.parse(savedBoard);
       setCurrentBoard(board);
-      //console.log("saved board: ", board);
+      console.log("saved board: ", board);
     }
     else {
       board = location.state?.board;
-      //console.log("board: ", board);
+      console.log("Not found board in session storage, using location state");
       setCurrentBoard(board);
     }
 
-    const savedCellData = sessionStorage.getItem('cell-data');
+    const savedCellData = sessionStorage.getItem(window.name + '-cell-data');
     if (savedCellData) {
       const {cellStatus} = JSON.parse(savedCellData);
       setCurrentCellStatus(cellStatus)
@@ -63,19 +72,41 @@ function GamePage() {
       setCurrentCellStatus(cellStatus);
     }
 
-    const savedShowNotations = sessionStorage.getItem('show-notations');
+    const savedShowMetaData = sessionStorage.getItem(window.name + '-show-meta-data');
+    if (savedShowMetaData) {
+      const {showMetaData} = JSON.parse(savedShowMetaData);
+      setCurrentShowMetaData(showMetaData);
+      console.log("saved show meta data: ", showMetaData);
+    }
+    else {
+      setCurrentShowMetaData(false);
+      console.log("setting show meta data to false. no saved show meta data in session storage");
+    }
+
+    const savedShowNotations = sessionStorage.getItem(window.name + '-show-notations');
     if (savedShowNotations) {
       const {showNotations} = JSON.parse(savedShowNotations);
       setCurrentShowNotations(showNotations);
       console.log("saved show notations: ", showNotations);
     }
     else {
-      showNotations = false;
-      setCurrentShowNotations(showNotations);
+      setCurrentShowNotations(false);
       console.log("setting show notations to false. no saved show notations in session storage");
     }
 
-    const savedCellNotation = sessionStorage.getItem('cell-notation');
+    const savedMetadata = sessionStorage.getItem(window.name + '-meta-data');
+    if (savedMetadata) {
+      const {metadata} = JSON.parse(savedMetadata);
+      setCurrentMetadata(metadata);
+      console.log("saved metadata: ", metadata);
+    }
+    else {
+      metadata = [];
+      setCurrentMetadata(metadata);
+      console.log("setting metadata to empty array. no saved metadata in session storage");
+    }
+
+    const savedCellNotation = sessionStorage.getItem(window.name + '-cell-notation');
     if (savedCellNotation) {
       const {cellNotation} = JSON.parse(savedCellNotation);
       setCurrentCellNotation(cellNotation);
@@ -86,7 +117,7 @@ function GamePage() {
   useEffect(() => {
     //console.log("updating saved board: ", currentBoard);
     if (currentBoard) {
-      sessionStorage.setItem('board-data', JSON.stringify({
+      sessionStorage.setItem(window.name + '-board-data', JSON.stringify({
         board: currentBoard,
       }));
     }
@@ -96,15 +127,24 @@ function GamePage() {
     //console.log("updating saved cell status: ", currentCellStatus);
     if (currentCellStatus) {
       //console.log("Updating cell statussssssss");
-      sessionStorage.setItem('cell-data', JSON.stringify({
+      sessionStorage.setItem(window.name + '-cell-data', JSON.stringify({
         cellStatus: currentCellStatus,
       }));
     }
   }, [currentCellStatus]); // run every time these change
 
   useEffect(() => {
+    if (currentShowMetaData !== undefined) {
+      sessionStorage.setItem(window.name + '-show-meta-data', JSON.stringify({
+        showMetaData: currentShowMetaData,
+      }));
+      console.log("updating saved show meta data: ", currentShowMetaData);
+    }
+  }, [currentShowMetaData]); // run every time these change
+
+  useEffect(() => {
     if (currentShowNotations !== undefined) {
-      sessionStorage.setItem('show-notations', JSON.stringify({
+      sessionStorage.setItem(window.name + '-show-notations', JSON.stringify({
         showNotations: currentShowNotations,
       }));
       console.log("updating saved show notations: ", currentShowNotations);
@@ -113,17 +153,48 @@ function GamePage() {
 
   useEffect(() => {
     if (currentCellNotation) {
-      sessionStorage.setItem('cell-notation', JSON.stringify({
+      sessionStorage.setItem(window.name + '-cell-notation', JSON.stringify({
         cellNotation: currentCellNotation,
       }));
       console.log("updating saved cell notation: ", currentCellNotation);
     }
   }, [currentCellNotation]); // run every time these change
 
+  useEffect(() => {
+    if (currentMetadata) {
+      sessionStorage.setItem(window.name + '-meta-data', JSON.stringify({
+        metadata: currentMetadata,
+      }));
+      console.log("updating saved metadata: ", currentMetadata);
+    }
+  }, [currentMetadata]); // run every time these change
+
   return (
     <div>
-      <h2>Sudoku Game</h2>
+      <h2>Sudoku Game. --ID--: {window.name}</h2>
       <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start', justifyContent: 'center' }}>        {/* Left section (board and buttons) */}
+                 {/* Left section (metadata) */}
+         <div>
+           { currentShowMetaData ? (
+             <>
+               <h3>Found metadata</h3>
+               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'left' }}>
+                 {currentMetadata.map((meta, index) => (
+                   <p key={index} style={{ margin: '0', textAlign: 'left' }}>
+                     {index + 1}. {
+                     Number(meta[0]) === 1
+                       ? "Line of digit " + Number(meta[1]) + " in block (" + (Number(meta[2]) + 1) + "," + (Number(meta[3]) + 1) + ") is in line " + (Number(meta[2]) * 3 + Number(meta[4]) + 1)
+                       : Number(meta[0]) === 2
+                       ? "Column of digit " + Number(meta[1]) + " in block (" + (Number(meta[2]) + 1) + "," + (Number(meta[3]) + 1) + ") is in column " + (Number(meta[3]) * 3 + Number(meta[4]) + 1)
+                       : "Unknown metadata type: " + meta[0]
+                     }
+                   </p>
+                 ))}
+               </div>
+             </>
+           ) : null }
+         </div>
+        
         <div>
           <div
             style={{
@@ -203,7 +274,7 @@ function GamePage() {
                     <input
                       type="text"
                       maxLength={1}
-                      placeholder = {currentShowNotations ? currentCellNotation?.[rowIndex]?.[colIndex] : ''}
+                      placeholder = {currentShowNotations === true ? currentCellNotation?.[rowIndex]?.[colIndex] : ''}
                       value={value !== 0 ? value : ''}
                       onChange={async (e) => {
                         const val = e.target.value;
@@ -231,6 +302,7 @@ function GamePage() {
                               method: 'POST',
                               headers: {
                                 'Content-Type': 'application/json',
+                                'X-Tab-Id': window.name!,
                               },
                               credentials: 'include',
                               body: JSON.stringify({
@@ -254,6 +326,7 @@ function GamePage() {
                                 method: 'POST',
                                 headers: {
                                   'Content-Type': 'application/json',
+                                  'X-Tab-Id': window.name!,
                                 },
                                 credentials: 'include',
                                 body: JSON.stringify({
@@ -265,6 +338,18 @@ function GamePage() {
                               const data_update_cell_notation = await response_update_cell_notation.json();
                               setCurrentCellNotation(data_update_cell_notation.cell_notation);
                               console.log("cell notation: ", data_update_cell_notation.cell_notation);
+
+                              const response = await fetch('http://localhost:8000/get-metadata', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'X-Tab-Id': window.name!,
+                                },
+                                credentials: 'include',
+                              });
+                              const data = await response.json();
+                              setCurrentMetadata(data.metadata);
+                              console.log("metadata: ", data.metadata);
                             }
                           } catch (err) {
                             console.error("Validation error:", err);
@@ -295,24 +380,25 @@ function GamePage() {
               })
             )}
           </div>
-          <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
               <div 
                 style={{
                   width: '40px',
                   height: '20px',
-                  backgroundColor: currentShowNotations ? 'green' : 'red',
+                  backgroundColor: currentShowNotations === true ? 'green' : 'red',
                   borderRadius: '10px',
                   position: 'relative',
                   cursor: 'pointer',
                   transition: 'background-color 0.3s'
                 }}
                 onClick={async () => {
-                  setCurrentShowNotations(!currentShowNotations);
+                  setCurrentShowNotations(!(currentShowNotations === true));
                   const response = await fetch('http://localhost:8000/get-cell-notation', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
+                      'X-Tab-Id': window.name!,
                     },
                     credentials: 'include',
                   });
@@ -328,63 +414,412 @@ function GamePage() {
                     borderRadius: '50%',
                     position: 'absolute',
                     top: '2px',
-                    left: currentShowNotations ? '22px' : '2px',
+                    left: currentShowNotations === true ? '22px' : '2px',
                     transition: 'transform 0.3s'
                   }}
                 />
               </div>
               Show cell notations
             </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <div 
+                style={{
+                  width: '40px',
+                  height: '20px',
+                  backgroundColor: currentShowMetaData === true ? 'green' : 'red',
+                  borderRadius: '10px',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.3s'
+                }}
+                onClick={async () => {
+                  setCurrentShowMetaData(!(currentShowMetaData === true));
+                  const response = await fetch('http://localhost:8000/get-metadata', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-Tab-Id': window.name!,
+                    },
+                    credentials: 'include',
+                  });
+                  const data = await response.json();
+                  setCurrentMetadata(data.metadata);
+                  console.log("metadata: ", data.metadata);
+                }}
+              >
+                <div 
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    backgroundColor: 'white',
+                    borderRadius: '50%',
+                    position: 'absolute',
+                    top: '2px',
+                    left: currentShowMetaData === true ? '22px' : '2px',
+                    transition: 'transform 0.3s'
+                  }}
+                />
+              </div>
+              Show found metadata
+            </label>
           </div>
           <div style={{ marginTop: '1rem' }}>
             <h4>Select solving techniques:</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <details style={{ textAlign: 'left' }}>
-                <summary><label><input type="checkbox" /> Naked Singles</label></summary>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(1)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(1);
+                    } else {
+                      newSet.delete(1);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Naked Single row / column</label></summary>
                 <p>
-                  A cell has only one possible number it can be. This is the most basic and common technique.
+                 If only one number is left in a column / line, it can be placed in the empty cell.
                 </p>
               </details>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <details style={{ textAlign: 'left' }}>
-                <summary><label><input type="checkbox" /> Hidden Singles</label></summary>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(2)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(2);
+                    } else {
+                      newSet.delete(2);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Naked Single block</label></summary>
                 <p>
-                  A number can only go in one position in a row, column, or box, even though the cell has other candidates.
+                If only one number is left in a block, it can be placed in the empty cell.
                 </p>
               </details>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <details style={{ textAlign: 'left' }}>
-                <summary><label><input type="checkbox" /> Pointing Pairs</label></summary>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(3)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(3);
+                    } else {
+                      newSet.delete(3);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Box Line Interaction</label></summary>
                 <p>
-                  A candidate is confined to a single row or column within a box, so it can be removed from the same row or column outside the box.
+                The technique eliminates places for a digit based on the digit already placed in the line / column.
+                If a digit is found that for it only one place in a given block is available it updates the board accordingly,
+                and returns True.
                 </p>
               </details>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <details style={{ textAlign: 'left' }}>
-                <summary><label><input type="checkbox" /> Box-Line Reduction</label></summary>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(4)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(4);
+                    } else {
+                      newSet.delete(4);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Metadata Box Line Interaction</label></summary>
                 <p>
-                  A candidate appears in only one line (row or column) within a box, allowing you to eliminate it from other cells in that line.
+                The technique is used to find new metadata.
+                The specific metadata it finds is to find a specific row / col in a block where a digit must be.
                 </p>
               </details>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <details style={{ textAlign: 'left' }}>
-                <summary><label><input type="checkbox" /> X-Wing</label></summary>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(5)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(5);
+                    } else {
+                      newSet.delete(5);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Column Line Interaction</label></summary>
                 <p>
-                  A pattern involving two rows and two columns where a candidate can only go in exactly two positions in each row/column, forming a rectangle.
+                The technique procedure:
+                Look at a specific line / column. Look at the missing numbers.
+                If only one number is possible, because all other numbers are already in the column, we found it!
+                </p>
+              </details>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <details style={{ textAlign: 'left' }}>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(6)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(6);
+                    } else {
+                      newSet.delete(6);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Naked Single</label></summary>
+                <p>
+                The technique looks at the cell notation matrix. if a cell is found with only one option - yay.
+                </p>
+              </details>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <details style={{ textAlign: 'left' }}>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(7)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(7);
+                    } else {
+                      newSet.delete(7);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Naked Double</label></summary>
+                <p>
+                TODO: Add description.
+                </p>
+              </details>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <details style={{ textAlign: 'left' }}>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(8)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(8);
+                    } else {
+                      newSet.delete(8);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Naked Triple</label></summary>
+                <p>
+                In a block, where 3 cells share only 3 total different options of numbers, all other cells in the block
+                cannot be filled with these numbers.
+                This is also true for lines / columns.
+                see <a href="https://www.youtube.com/watch?v=Mh8-MICdO6s&ab_channel=LearnSomething">https://www.youtube.com/watch?v=Mh8-MICdO6s&ab_channel=LearnSomething</a> 9:31 - for an example.
+                </p>
+              </details>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <details style={{ textAlign: 'left' }}>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(9)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(9);
+                    } else {
+                      newSet.delete(9);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Metadata from cell notation</label></summary>
+                <p style={{ whiteSpace: 'pre', lineHeight: '1.5', fontFamily: 'monospace' }}>
+                 Example: Cell notation in block (1,2) should be that 8 is on the first line<br />
+                 
+                 -------------------------------------------------------------------------------------<br />
+                 |    6     **59***  *4789** | **489**  **489**     1    |    3        2     **578** |<br />
+                 |    3        2     *4789** |    6        5     **49*** | **478**     1     **78*** |<br />
+                 | **158**  **15***  **148** | **23***     7     **23*** | **458**     6        9    |<br />
+                 -------------------------------------------------------------------------------------<br />
+                 | **189**     6        3    | *2589**  **289**  **259** | **17***     4     **17*** |<br />
+                 |    2        4        5    |    1        6        7    |    9        8        3    |<br />
+                 |    7     **19***  **189** | *3489**  **489**  **349** |    2        5        6    |<br />
+                 -------------------------------------------------------------------------------------<br />
+                 |    4        3     **29*** | **259**     1        6    | **58***     7     **258** |<br />
+                 | **15***     7     **12*** | **25***     3        8    |    6        9        4    |<br />
+                 | **159**     8        6    |    7     **249**  *2459** | **15***     3     **125** |<br />
+                 -------------------------------------------------------------------------------------<br />
+                </p>
+              </details>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <details style={{ textAlign: 'left' }}>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(10)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(10);
+                    } else {
+                      newSet.delete(10);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Update cell notation from metadata</label></summary>
+                <p>
+                TODO: Add description.
+                </p>
+              </details>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <details style={{ textAlign: 'left' }}>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(11)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(11);
+                    } else {
+                      newSet.delete(11);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Skyscraper</label></summary>
+                <p>
+                TODO: Add description.
+                </p>
+              </details>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <details style={{ textAlign: 'left' }}>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(12)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(12);
+                    } else {
+                      newSet.delete(12);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Two String Kite</label></summary>
+                <p>
+                TODO: Add description.
+                </p>
+              </details>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <details style={{ textAlign: 'left' }}>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(13)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(13);
+                    } else {
+                      newSet.delete(13);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> Empty Rectangle</label></summary>
+                <p>
+                TODO: Add description.
+                </p>
+              </details>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <details style={{ textAlign: 'left' }}>
+                <summary><label><input 
+                  type="checkbox" 
+                  checked={selectedTechniques.has(14)}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedTechniques);
+                    if (e.target.checked) {
+                      newSet.add(14);
+                    } else {
+                      newSet.delete(14);
+                    }
+                    setSelectedTechniques(newSet);
+                  }}
+                /> XY-Wing</label></summary>
+                <p>
+                TODO: Add description.
                 </p>
               </details>
             </div>
           </div>
           <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-            <button style={{ padding: '0.5rem 1rem', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px' }} onClick={() => alert('Next Step clicked')}>
+            <button 
+              style={{ padding: '0.5rem 1rem', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px' }}
+              onClick={async () => {
+                const response = await fetch('http://localhost:8000/next-step-sudoku-human-solver', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Tab-Id': window.name!,
+                  },
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    techniques_to_use: Array.from(selectedTechniques).map(t => t.toString())
+                  })
+                });
+                const data = await response.json();
+                if (data.success) {
+                  setCurrentBoard(data.board);
+                  setCurrentCellNotation(data.cell_notation);
+                  setLastUsedTechnique(data.last_used_technique);
+                  setLastStepDescriptionStr(data.last_step_description_str);
+                }
+                else {
+                  alert("Failed to find next step.");
+                }
+
+                const response2 = await fetch('http://localhost:8000/get-metadata', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Tab-Id': window.name!,
+                  },
+                  credentials: 'include',
+                });
+                const data2 = await response2.json();
+                setCurrentMetadata(data2.metadata);
+                console.log("metadata: ", data2.metadata);
+              }}
+            >
               Next Step
             </button>
             <button
@@ -394,7 +829,8 @@ function GamePage() {
                   const response = await fetch('http://localhost:8000/solve-sudoku', {
                     method: 'POST',
                     headers: {
-                      'Content-Type': 'application/json'
+                      'Content-Type': 'application/json',
+                      'X-Tab-Id': window.name!,
                     },
                     credentials: 'include',
                     body: JSON.stringify({
@@ -472,6 +908,10 @@ function GamePage() {
               Revert
             </button>
           </div>
+          <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+             <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Last used technique: {lastUsedTechnique}</p>
+             <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Last step description: {lastStepDescriptionStr}</p>
+           </div>
         </div>
 
         {/* Right section (image) */}

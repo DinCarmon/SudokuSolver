@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import cv2
 import json
+import uuid
+import secrets
 
 # Add the parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -25,8 +27,16 @@ from Solver.solver import Board
 from Solver.solver import update_cell_notation
 from Solver.solver import cli_print_board
 from Solver.solver import safe_replace
+from Solver.solver import next_step_sudoku_human_solver
+from Solver.solver import SudokuTechnique
 
 app = FastAPI()
+
+UPLOAD_FOLDER = './user_uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Add session middleware FIRST (before CORS)
+app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
 
 """
 ## CORS Issues and Fix
@@ -41,15 +51,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_FOLDER = './user_uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-
-# Add this line before any routes that use session
-app.add_middleware(SessionMiddleware, secret_key="your-secret-key")
+SESSION_STORE = {}
 
 @app.post("/upload-image")
 async def upload_image(request: Request, image: UploadFile = File(...)):
+
     if image.content_type not in ["image/jpeg", "image/png"]:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Invalid image type")
 
@@ -74,7 +80,16 @@ async def upload_image(request: Request, image: UploadFile = File(...)):
 
     board_inst = Board(board)
     print(board_inst)
-    request.session['board_inst'] = json.dumps(board_inst.to_dict())  
+    tab_id = request.headers.get("X-Tab-Id")
+    if tab_id:
+        print("request.session: ", request.session)
+        if tab_id not in SESSION_STORE:
+            SESSION_STORE[tab_id] = {}
+        SESSION_STORE[tab_id]['board-data'] = json.dumps(board_inst.to_dict())
+        print("request.session: ", request.session)
+        print("created key: ", tab_id + '-board-data')
+    else:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="No tab id")
 
     # Read and encode the original image to base64
     with open(file_location, "rb") as img_file:
@@ -133,36 +148,94 @@ async def solve_sudoku_route(
     if not success:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Board is unsolvable")
 
-    return {
+    return JSONResponse(content={
         "solvable": success,
         "board": original_board.tolist(),
         "solved_board": solved_board.tolist(),
         "original_image": image,
         "wrapped_image": image_wrap,
-    }
+    })
 
 @app.post("/update-cell-notation")
 async def update_board(
     request: Request,
     payload: dict = Body(...)
 ):
-    board_inst = Board.from_dict(json.loads(request.session['board_inst']))
+    print("request.session.id: ", request.session.get("session_id"))
+    tab_id = request.headers.get("X-Tab-Id")
+    if tab_id:
+        print("request.session: ", request.session)
+        board_inst = Board.from_dict(json.loads(SESSION_STORE[tab_id]['board-data']))
+    else:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="No tab id")
     row = int(payload.get("row"))
     col = int(payload.get("col"))
     digit = int(payload.get("digit"))
     safe_replace(board_inst, digit, row, col)
-    request.session['board_inst'] = json.dumps(board_inst.to_dict())
+    SESSION_STORE[tab_id]['board-data'] = json.dumps(board_inst.to_dict())
     #cli_print_board(board_inst, print_cell_notation=True)
-    return {
+    return JSONResponse(content={
         "cell_notation": board_inst.cell_notation
-    }
+    })
 
 @app.post("/get-cell-notation")
 async def get_cell_notation(
     request: Request,
 ):
-    board_inst = Board.from_dict(json.loads(request.session['board_inst']))
-    return {
+    print("request.session.id: ", request.session.get("session_id"))
+    tab_id = request.headers.get("X-Tab-Id")
+    if tab_id:
+        board_inst = Board.from_dict(json.loads(SESSION_STORE[tab_id]['board-data']))
+    else:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="No tab id")
+    return JSONResponse(content={
         "cell_notation": board_inst.cell_notation
-    }
+    })
 
+@app.post("/get-metadata")
+async def get_metadata(
+    request: Request,
+):
+    print("request.session.id: ", request.session.get("session_id"))
+    tab_id = request.headers.get("X-Tab-Id")
+    if tab_id:
+        board_inst = Board.from_dict(json.loads(SESSION_STORE[tab_id]['board-data']))
+    else:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="No tab id")
+    print("board_inst.metadata_on_board: ", Board.metadata_to_dict(board_inst.metadata_on_board))
+    return JSONResponse(content={
+        "metadata": Board.metadata_to_dict(board_inst.metadata_on_board)
+    })
+
+@app.post("/next-step-sudoku-human-solver")
+async def next_step_sudoku_human_solver_route(
+    request: Request,
+    payload: dict = Body(...)
+):
+    tab_id = request.headers.get("X-Tab-Id")
+    if tab_id:
+        print("request.session: ", request.session)
+        board_inst = Board.from_dict(json.loads(SESSION_STORE[tab_id]['board-data']))
+    else:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="No tab id")
+    techniques_to_use = payload.get("techniques_to_use", [])
+    print([member.value for member in SudokuTechnique])
+    techniques_to_use = [SudokuTechnique(int(technique)) for technique in techniques_to_use]
+    print("techniques_to_use: ", techniques_to_use)
+    success = next_step_sudoku_human_solver(board_inst, techniques_to_use)
+    print("success: ", success)
+    SESSION_STORE[tab_id]['board-data'] = json.dumps(board_inst.to_dict())
+    return JSONResponse(content={
+        "success": success,
+        "board": board_inst.board.tolist(),
+        "cell_notation": board_inst.cell_notation,
+        "last_used_technique": board_inst.last_used_technique.name,
+        "last_step_description_str": board_inst.last_step_description_str
+    })
+
+@app.get("/api")
+def read_api(request: Request):
+    session_id = request.cookies.get("session_id")
+    tab_id = request.headers.get("X-Tab-Id")
+    print("Session:", session_id, "Tab:", tab_id)
+    return JSONResponse(content={"session_id": session_id, "tab_id": tab_id})
