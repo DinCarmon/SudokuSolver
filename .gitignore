@@ -196,3 +196,5 @@ cython_debug/
 
 # Ignore user uploads.
 Backend/user_uploads
+*.DS_STORE
+*.keras

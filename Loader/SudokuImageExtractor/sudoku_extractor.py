@@ -1,5 +1,6 @@
 import os
 import random
+from tkinter import N
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,8 +24,8 @@ def preprocess_picture(image):
     # Create a threshold image. where a pixel value is either 255 or 0.
     threshold_img = cv2.adaptiveThreshold(blur, 255, 1, 1, 11, 2)
 
-    plt.figure()
-    plt.imshow(threshold_img)
+    # plt.figure()
+    # plt.imshow(threshold_img)
     # plt.show()
     return threshold_img
 
@@ -38,8 +39,8 @@ def find_contours(image, threshold_image):
     contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cv2.drawContours(image_with_contours, contours, -1, (0, 255, 0), 3)
 
-    plt.figure()
-    plt.imshow(image_with_contours)
+    # plt.figure()
+    # plt.imshow(image_with_contours)
     #plt.show()
 
     return contours
@@ -70,8 +71,8 @@ def find_soduko_outline(image, contours):
     image_with_biggest_simplified_contour = image.copy()
     cv2.drawContours(image_with_biggest_simplified_contour, [biggest_contour], -1, (0, 255, 0), 3)
 
-    plt.figure()
-    plt.imshow(image_with_biggest_simplified_contour)
+    # plt.figure()
+    # plt.imshow(image_with_biggest_simplified_contour)
     # plt.show()
 
     return biggest_contour
@@ -88,8 +89,8 @@ def get_edges_coords_from_soduko_contour(image, soduko_outline_contour):
 
     image_with_soduko_edges = image.copy()
     cv2.drawContours(image_with_soduko_edges, soduko_rectangle_edges_coords, -1, (0, 255, 0), 10)
-    plt.figure()
-    plt.imshow(image_with_soduko_edges)
+    # plt.figure()
+    # plt.imshow(image_with_soduko_edges)
     # plt.show()
 
     return soduko_rectangle_edges_coords
@@ -101,8 +102,8 @@ def get_extracted_soduko_image(image, soduko_contour):
     imagewrap = cv2.warpPerspective(image, matrix, (450, 450))
     imagewrap = cv2.cvtColor(imagewrap, cv2.COLOR_BGR2GRAY)
 
-    plt.figure()
-    plt.imshow(imagewrap)
+    # plt.figure()
+    # plt.imshow(imagewrap)
     # plt.show()
 
     return imagewrap
@@ -154,8 +155,8 @@ def get_image_wrap(image):
 def extract_soduko_from_image(image):
     imagewrap = get_image_wrap(image)
 
-    plt.figure()
-    plt.imshow(imagewrap)
+    #plt.figure()
+    #plt.imshow(imagewrap)
     #plt.show()
 
     sudoku_cells = splitcells(imagewrap)
@@ -168,8 +169,104 @@ def extract_soduko_from_image(image):
 
     return soduku_prediction
 
+def create_valid_image_wrap_list():
+    """Operation: Go over all images in v2_test, and v2_train. show each picture to the user, and ask if yes or no.
+    if user presses yes, add the image name to the list. Final list should be saved to a file."""
+
+    base_dir = os.path.dirname(__file__)
+    folder1 = os.path.join(base_dir, "../Datasets/Dataset1-SudokuImageDataset-Kaggle/v2_test/v2_test")
+    folder2 = os.path.join(base_dir, "../Datasets/Dataset1-SudokuImageDataset-Kaggle/v2_train/v2_train")
+
+    image_names1 = [os.path.join(folder1, name) for name in os.listdir(folder1)]
+    image_names2 = [os.path.join(folder2, name) for name in os.listdir(folder2)]
+
+    image_names = image_names1 + image_names2
+
+    valid_image_names = []
+
+    for image_name in image_names:
+        if image_name.endswith(".dat"):
+            continue
+
+        image = cv2.imread(image_name)
+
+        try:
+            image_wrap = get_image_wrap(image)
+        except Exception as e:
+            print(f"Error processing image {image_name}: {e}")
+            continue
+
+
+        # Do not wait for the user to press enter
+        plt.ion()
+        plt.figure()
+        plt.imshow(image_wrap)
+        plt.show()
+
+        # Ask user if the image is valid
+        user_input = input("Is the image valid? (y/n): ")
+        if user_input == 'y':
+            valid_image_names.append(image_name)
+
+    # Save the list to a file
+    with open(os.path.join(base_dir + '/../Datasets/Dataset1-SudokuImageDataset-Kaggle/valid_image_wraps_names.txt'), 'w') as f:
+        for image_name in valid_image_names:
+            f.write(image_name + '\n')
+
+def create_relevant_digit_images_dataset():
+    """ Go over all images_names in valid_image_wraps_names.txt, and create a dataset of relevant digit images.
+    For each image, go over all the cells, and create a dataset of relevant digit images, along with the digit number which 
+    can be found in the curresponding image file .dat."""
+
+    base_dir = os.path.dirname(__file__)
+
+    # Create digit dataset directory
+    digit_dataset_dir = os.path.join(base_dir, "../Datasets/Dataset1-SudokuImageDataset-Kaggle/digit_dataset")
+    os.makedirs(digit_dataset_dir, exist_ok=True)
+
+    valid_image_wraps_names = os.path.join(base_dir, "../Datasets/Dataset1-SudokuImageDataset-Kaggle/valid_image_wraps_names.txt")
+
+    with open(valid_image_wraps_names, 'r') as f:
+        num = 0
+        for line in f:
+            original_image_file = line.strip()
+            original_image_data_file = original_image_file.replace(".jpg", ".dat")
+
+            suduku_digits = []
+            with open(original_image_data_file, 'r') as f:
+                for idx, line in enumerate(f):
+                    if idx == 0 or idx == 1:
+                        continue
+                    line_digits = line.split(" ")
+                    line_digits = [int(digit) for digit in line_digits if digit != "\n"]
+                    suduku_digits.append(line_digits)
+
+            image = cv2.imread(original_image_file)
+            image_wrap = get_image_wrap(image)
+
+            sudoku_cells = splitcells(image_wrap)
+
+            sudoku_cell_cropped = crop_cell(sudoku_cells)
+
+            for idx, digit_img in enumerate(sudoku_cell_cropped):
+                num += 1
+
+                # Save the digit image, and a file with the digit number
+                with open(os.path.join(digit_dataset_dir, f"{num}.jpg"), 'wb') as g:
+                    # Change from PIL image to jpg
+                    digit_img.save(g, format='JPEG')
+                with open(os.path.join(digit_dataset_dir, f"{num}.dat"), 'w') as h:
+                    digit = suduku_digits[idx // 9][idx % 9]
+                    if digit == 0:
+                        digit = 10 # It is no digit.
+                    h.write(str(digit))
 
 if __name__ == '__main__':
+    #create_relevant_digit_images_dataset()
+    #exit()
+
+    # create_valid_image_wrap_list()
+
     base_dir = os.path.dirname(__file__)
     folder = os.path.join(base_dir, "../Datasets/Dataset1-SudokuImageDataset-Kaggle/v2_train/v2_train")
 
