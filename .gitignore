@@ -198,3 +198,4 @@ cython_debug/
 Backend/user_uploads
 *.DS_STORE
 *.keras
+*.pem

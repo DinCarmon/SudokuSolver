@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 function GamePage() {
-  const isReload = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+  //const isReload = performance.getEntriesByType('navigation')[0]?.type === 'reload';
 
   /*if (isReload) {
     window.history.replaceState({ ...window.history.state, usr: null }, '', window.location.href);
@@ -13,18 +13,18 @@ function GamePage() {
   const originalImage = location.state?.original_image as string | undefined;
   const wrappedImage = location.state?.wrapped_image as string | undefined;
 
-  let board;
-  const [currentBoard, setCurrentBoard] = useState(board);
+  let board: number[][] = [];
+  const [currentBoard, setCurrentBoard] = useState<number[][]>(board);
   // Store the history of boards
   const boardHistoryRef = useRef([board]);
 
-  let cellStatus;
-  const [currentCellStatus, setCurrentCellStatus] = useState<Record<string, "ok" | "error">>();
+  let cellStatus: Record<string, "ok" | "error"> = {};
+  const [currentCellStatus, setCurrentCellStatus] = useState<Record<string, "ok" | "error">>(cellStatus);
 
   const [currentShowMetaData, setCurrentShowMetaData] = useState<boolean | undefined>(undefined);
   const [currentShowNotations, setCurrentShowNotations] = useState<boolean | undefined>(undefined);
 
-  let metadata : number[][];
+  let metadata : number[][] = [];
   const [currentMetadata, setCurrentMetadata] = useState<number[][]>(metadata);
 
   let cell_notation;
@@ -38,7 +38,7 @@ function GamePage() {
   
 
 
-  const boardString = currentBoard ? currentBoard.map(row => row.join(' ')).join('\n') : 'No board data';
+  //const boardString = currentBoard ? currentBoard.map(row => row.join(' ')).join('\n') : 'No board data';
 
   //console.log(boardString);
   //console.log("Original image string:", origina lImage?.slice(0, 100));
@@ -49,15 +49,24 @@ function GamePage() {
     //console.log("window.history.state: ", window.history.state);
 
     const savedBoard = sessionStorage.getItem(window.name + '-board-data');
-    if (savedBoard) {
-      const {board} = JSON.parse(savedBoard);
-      setCurrentBoard(board);
-      console.log("saved board: ", board);
-    }
-    else {
+
+    if (location.state) {
       board = location.state?.board;
       console.log("Not found board in session storage, using location state");
+      if (!board) {
+        console.log("No board found in location.state");
+      }
+      else {
+        console.log("board found in location.state: ", board);
+      }
       setCurrentBoard(board);
+    }
+    else {
+      if (savedBoard) {
+        const {board} = JSON.parse(savedBoard);
+        setCurrentBoard(board);
+        console.log("saved board: ", board);
+      }
     }
 
     const savedCellData = sessionStorage.getItem(window.name + '-cell-data');
@@ -116,7 +125,7 @@ function GamePage() {
 
   useEffect(() => {
     //console.log("updating saved board: ", currentBoard);
-    if (currentBoard) {
+    if (currentBoard && currentBoard.length > 0) {
       sessionStorage.setItem(window.name + '-board-data', JSON.stringify({
         board: currentBoard,
       }));
@@ -212,17 +221,14 @@ function GamePage() {
                 const isEmpty = value === 0;
                 
                 // Parse cell notation if available
-                let cellNotationArray: number[][] = [];
                 try {
                   if (currentCellNotation) {
                     // Check if it's already an array
                     if (Array.isArray(currentCellNotation)) {
-                      cellNotationArray = currentCellNotation;
                     } else if (typeof currentCellNotation === 'string') {
                       // Try to parse as JSON, but handle potential issues
                       const trimmed = currentCellNotation.trim();
                       if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-                        cellNotationArray = JSON.parse(trimmed);
                       } else {
                         console.log('Cell notation is not a valid JSON array:', trimmed);
                       }
@@ -235,21 +241,6 @@ function GamePage() {
                   console.error('Raw value was:', currentCellNotation);
                   // Don't throw, just continue with empty array
                 }
-                
-                // Get notation for this cell - assuming it's an array of possible numbers
-                const cellNotation: number[] = (() => {
-                  try {
-                    const cellData = cellNotationArray[rowIndex]?.[colIndex];
-                    //console.log("cell data: ", cellData);
-                    if (Array.isArray(cellData)) {
-                      return cellData.filter(num => typeof num === 'number' && num >= 1 && num <= 9);
-                    }
-                    return [];
-                  } catch (e) {
-                    console.error('Error accessing cell notation data:', e);
-                    return [];
-                  }
-                })();
                 
                 return (
                   <div
@@ -846,21 +837,23 @@ function GamePage() {
                     alert((data.detail || "Invalid board.") + "\nReverting if possible.");
                     if (boardHistoryRef.current.length > 1) {
                       const prevBoard = boardHistoryRef.current.pop();
-                      setCurrentBoard(prevBoard);
-                      // Find changed cells between currentBoard and prevBoard
-                      const newcurrentCellStatus = { ...currentCellStatus };
-                      currentBoard.forEach((row, rIdx) => {
-                        row.forEach((cell, cIdx) => {
-                          if (prevBoard[rIdx][cIdx] !== cell) {
-                            // Remove error status for changed cells
-                            const key = `${rIdx}-${cIdx}`;
-                            if (newcurrentCellStatus[key]) {
-                              delete newcurrentCellStatus[key];
+                      if (prevBoard) {
+                        setCurrentBoard(prevBoard);
+                        // Find changed cells between currentBoard and prevBoard
+                        const newcurrentCellStatus = { ...currentCellStatus };
+                        currentBoard.forEach((row, rIdx) => {
+                          row.forEach((cell, cIdx) => {
+                            if (prevBoard && prevBoard[rIdx] && prevBoard[rIdx][cIdx] !== cell) {
+                              // Remove error status for changed cells
+                              const key = `${rIdx}-${cIdx}`;
+                              if (newcurrentCellStatus[key]) {
+                                delete newcurrentCellStatus[key];
+                              }
                             }
-                          }
+                          });
                         });
-                      });
-                      setCurrentCellStatus(newcurrentCellStatus);
+                        setCurrentCellStatus(newcurrentCellStatus);
+                      }
                     }
                     return;
                   }
@@ -886,22 +879,23 @@ function GamePage() {
               onClick={() => {
                 if (boardHistoryRef.current.length > 1) {
                   const prevBoard = boardHistoryRef.current.pop();
-                  setCurrentBoard(prevBoard);
-
-                  // Find changed cells between currentBoard and prevBoard
-                  const newcurrentCellStatus = { ...currentCellStatus };
-                  currentBoard.forEach((row, rIdx) => {
-                    row.forEach((cell, cIdx) => {
-                      if (prevBoard[rIdx][cIdx] !== cell) {
-                        // Remove error status for changed cells
-                        const key = `${rIdx}-${cIdx}`;
-                        if (newcurrentCellStatus[key]) {
-                          delete newcurrentCellStatus[key];
+                  if (prevBoard) {
+                    setCurrentBoard(prevBoard);
+                    // Find changed cells between currentBoard and prevBoard
+                    const newcurrentCellStatus = { ...currentCellStatus };
+                    currentBoard.forEach((row, rIdx) => {
+                      row.forEach((cell, cIdx) => {
+                        if (prevBoard && prevBoard[rIdx] && prevBoard[rIdx][cIdx] !== cell) {
+                          // Remove error status for changed cells
+                          const key = `${rIdx}-${cIdx}`;
+                          if (newcurrentCellStatus[key]) {
+                            delete newcurrentCellStatus[key];
+                          }
                         }
-                      }
+                      });
+                    setCurrentCellStatus(newcurrentCellStatus);
                     });
-                  setCurrentCellStatus(newcurrentCellStatus);
-                  });
+                  }
                 }
               }}
             >
