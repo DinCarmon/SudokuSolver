@@ -21,8 +21,6 @@ sudo apt install python3 python3-pip python3-venv -y
 
 C. Upload your FastAPI project
 
-You have 3 options:
-
 Option 1: Clone from Git
 git clone https://github.com/yourusername/your-repo.git
 cd your-repo
