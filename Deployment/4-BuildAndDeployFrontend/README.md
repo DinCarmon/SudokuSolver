@@ -11,6 +11,7 @@ We can always migrate later
 3. npm audit fix
 4. npm run build
 5. Vite will output a production build in the dist/ directory.
+6. mv dist/ ~/react-frontend
 
 C. Configure Nginx to Serve React
 
