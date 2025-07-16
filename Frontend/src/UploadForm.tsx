@@ -84,6 +84,7 @@ function UploadForm() {
       }
     } catch (error: any) {
       setMessage(`❌ ${error.message}`);
+      console.error("Error uploading image:", error);
     }
   };
 
