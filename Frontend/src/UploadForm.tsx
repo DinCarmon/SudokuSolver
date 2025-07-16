@@ -13,7 +13,7 @@ function UploadForm() {
 
     console.log("UploadForm mounted");
     if (!sessionStorage.getItem('tabId')) {
-      const tabId = crypto.randomUUID();
+      const tabId = window.crypto.randomUUID();
       sessionStorage.setItem('tabId', tabId);
       window.name = tabId;
     }
