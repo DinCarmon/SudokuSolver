@@ -26,8 +26,13 @@ server {
     root /home/ubuntu/react-frontend;
     index index.html;
 
-    location / {
-        try_files $uri /index.html;
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/app/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection keep-alive;
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
     }
 }
 </code></pre>
@@ -52,6 +57,10 @@ You should see something like:
 drwxr-xr-x ...
 
 If any of them show drwx------, that blocks Nginx.
+
+6. Do not forget to transfer the keras model for digit recognition
+
+scp -i <pem_file> <local_keras_file_path> ubuntu@<server_ip>:/home/ubuntu/SudokuSolver/Loader/SudokuImageExtractor/digit_recognition/digit_recognition_model/model.keras
 
 5. Restart Nginx:
 sudo systemctl restart nginx
