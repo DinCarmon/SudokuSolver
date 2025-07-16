@@ -69,4 +69,5 @@ D. Test in Browser
 
 Visit:
 http://<your-ec2-ip>
+* check full aplicativity of website
     
