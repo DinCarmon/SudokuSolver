@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { v4 as uuidv4 } from 'uuid';
+//import { v4 as uuidv4 } from 'uuid';
 
 function UploadForm() {
   const [image, setImage] = useState<File | null>(null);
@@ -14,9 +14,9 @@ function UploadForm() {
 
     console.log("UploadForm mounted");
     if (!sessionStorage.getItem('tabId')) {
-      const tabId = uuidv4(); //window.crypto?.randomUUID?.() ?? uuidFallback();
+      const tabId = window.crypto?.randomUUID?.() ?? uuidFallback();
 
-      /*function uuidFallback() {
+      function uuidFallback() {
         // Generates a RFC4122 version 4 UUID (fallback)
         return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c: string) =>
           (
@@ -24,7 +24,7 @@ function UploadForm() {
             (window.crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(c) / 4)))
           ).toString(16)
         );
-      }*/
+      }
 
       sessionStorage.setItem('tabId', tabId);
       window.name = tabId;
