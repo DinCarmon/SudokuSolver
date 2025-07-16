@@ -50,7 +50,12 @@ function GamePage() {
 
     const savedBoard = sessionStorage.getItem(window.name + '-board-data');
 
-    if (location.state) {
+    if (savedBoard) {
+      const {board} = JSON.parse(savedBoard);
+      setCurrentBoard(board);
+      console.log("saved board: ", board);
+    }
+    else {
       board = location.state?.board;
       console.log("Not found board in session storage, using location state");
       if (!board) {
@@ -60,13 +65,6 @@ function GamePage() {
         console.log("board found in location.state: ", board);
       }
       setCurrentBoard(board);
-    }
-    else {
-      if (savedBoard) {
-        const {board} = JSON.parse(savedBoard);
-        setCurrentBoard(board);
-        console.log("saved board: ", board);
-      }
     }
 
     const savedCellData = sessionStorage.getItem(window.name + '-cell-data');
