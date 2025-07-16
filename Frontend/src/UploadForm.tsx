@@ -13,6 +13,7 @@ function UploadForm() {
     fetchedRef.current = true;
 
     console.log("UploadForm mounted");
+    console.log("1");
     if (!sessionStorage.getItem('tabId')) {
       const tabId = window.crypto?.randomUUID?.() ?? uuidFallback();
 
