@@ -287,7 +287,7 @@ function GamePage() {
                         }
                         else {
                           try {
-                            const response = await fetch('http://localhost:8000/solve-sudoku', {
+                            const response = await fetch('/api/solve-sudoku', {
                               method: 'POST',
                               headers: {
                                 'Content-Type': 'application/json',
@@ -311,7 +311,7 @@ function GamePage() {
                                 ...prev,
                                 [`${rowIndex}-${colIndex}`]: "ok",
                               }));
-                              const response_update_cell_notation = await fetch('http://localhost:8000/update-cell-notation', {
+                              const response_update_cell_notation = await fetch('/api/update-cell-notation', {
                                 method: 'POST',
                                 headers: {
                                   'Content-Type': 'application/json',
@@ -328,7 +328,7 @@ function GamePage() {
                               setCurrentCellNotation(data_update_cell_notation.cell_notation);
                               console.log("cell notation: ", data_update_cell_notation.cell_notation);
 
-                              const response = await fetch('http://localhost:8000/get-metadata', {
+                              const response = await fetch('/api/get-metadata', {
                                 method: 'POST',
                                 headers: {
                                   'Content-Type': 'application/json',
@@ -383,7 +383,7 @@ function GamePage() {
                 }}
                 onClick={async () => {
                   setCurrentShowNotations(!(currentShowNotations === true));
-                  const response = await fetch('http://localhost:8000/get-cell-notation', {
+                  const response = await fetch('/api/get-cell-notation', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -423,7 +423,7 @@ function GamePage() {
                 }}
                 onClick={async () => {
                   setCurrentShowMetaData(!(currentShowMetaData === true));
-                  const response = await fetch('http://localhost:8000/get-metadata', {
+                  const response = await fetch('/api/get-metadata', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -774,7 +774,7 @@ function GamePage() {
             <button 
               style={{ padding: '0.5rem 1rem', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px' }}
               onClick={async () => {
-                const response = await fetch('http://localhost:8000/next-step-sudoku-human-solver', {
+                const response = await fetch('/api/next-step-sudoku-human-solver', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -796,7 +796,7 @@ function GamePage() {
                   alert("Failed to find next step.");
                 }
 
-                const response2 = await fetch('http://localhost:8000/get-metadata', {
+                const response2 = await fetch('/api/get-metadata', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -815,7 +815,7 @@ function GamePage() {
               style={{ padding: '0.5rem 1rem', backgroundColor: '#2196F3', color: 'white', border: 'none', borderRadius: '4px' }}
               onClick={async () => {
                 try {
-                  const response = await fetch('http://localhost:8000/solve-sudoku', {
+                  const response = await fetch('/api/solve-sudoku', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',

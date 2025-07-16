@@ -33,7 +33,7 @@ function UploadForm() {
 
     console.log("tabId: ", window.name);
 
-    fetch("http://localhost:8000/api", {
+    fetch("/api/api", {
       credentials: 'include',
       headers: {
         "X-Tab-Id": window.name!,
@@ -55,7 +55,7 @@ function UploadForm() {
     formData.append('image', image);
 
     try {
-      const response = await fetch('http://localhost:8000/upload-image', {
+      const response = await fetch('/api/upload-image', {
         method: 'POST',
         body: formData,
         credentials: 'include',

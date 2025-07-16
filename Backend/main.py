@@ -53,7 +53,8 @@ app.add_middleware(
 
 SESSION_STORE = {}
 
-@app.post("/upload-image")
+
+@app.post("/api/upload-image")
 async def upload_image(request: Request, image: UploadFile = File(...)):
 
     if image.content_type not in ["image/jpeg", "image/png"]:
@@ -118,11 +119,11 @@ async def upload_image(request: Request, image: UploadFile = File(...)):
         "cell_notation": board_inst.cell_notation
     })
 
-@app.options("/solve-sudoku")
+@app.options("/api/solve-sudoku")
 async def cors_preflight():
     return {"preflight": "ok"}
 
-@app.post("/solve-sudoku")
+@app.post("/api/solve-sudoku")
 async def solve_sudoku_route(
     request: Request,
     payload: dict = Body(...)
@@ -156,7 +157,7 @@ async def solve_sudoku_route(
         "wrapped_image": image_wrap,
     })
 
-@app.post("/update-cell-notation")
+@app.post("/api/update-cell-notation")
 async def update_board(
     request: Request,
     payload: dict = Body(...)
@@ -178,7 +179,7 @@ async def update_board(
         "cell_notation": board_inst.cell_notation
     })
 
-@app.post("/get-cell-notation")
+@app.post("/api/get-cell-notation")
 async def get_cell_notation(
     request: Request,
 ):
@@ -192,7 +193,7 @@ async def get_cell_notation(
         "cell_notation": board_inst.cell_notation
     })
 
-@app.post("/get-metadata")
+@app.post("/api/get-metadata")
 async def get_metadata(
     request: Request,
 ):
@@ -207,7 +208,7 @@ async def get_metadata(
         "metadata": Board.metadata_to_dict(board_inst.metadata_on_board)
     })
 
-@app.post("/next-step-sudoku-human-solver")
+@app.post("/api/next-step-sudoku-human-solver")
 async def next_step_sudoku_human_solver_route(
     request: Request,
     payload: dict = Body(...)
@@ -233,7 +234,7 @@ async def next_step_sudoku_human_solver_route(
         "last_step_description_str": board_inst.last_step_description_str
     })
 
-@app.get("/api")
+@app.get("/api/api")
 def read_api(request: Request):
     session_id = request.cookies.get("session_id")
     tab_id = request.headers.get("X-Tab-Id")
