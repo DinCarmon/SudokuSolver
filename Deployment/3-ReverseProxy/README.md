@@ -118,3 +118,9 @@ You should see your FastAPI response.
 E. Disable port 8000 from the security group
 
 Now we can get rid of opening the port 8000 under the security group policy.
+
+
+
+* If any problems occur, use the nginx logs to debug:
+  * sudo tail -n 50 /var/log/nginx/error.log
+  * sudo tail -n 50 /var/log/nginx/access.log

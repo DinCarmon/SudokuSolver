@@ -35,7 +35,7 @@ Fill in these:
 ⸻
 
 🔹 Storage
-	•	Default is fine (8 GiB) unless you need more.
+	•	Make sure you configure your machine with at least 16GB. We will download many 3rd party tools which shall take a lot of space
 
 ⸻
 
